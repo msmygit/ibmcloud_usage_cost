@@ -1,0 +1,32 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "baseUrl": "./src",
+    "paths": {
+      "@/*": ["./*"],
+      "@config/*": ["./config/*"],
+      "@services/*": ["./services/*"],
+      "@api/*": ["./api/*"],
+      "@models/*": ["./models/*"],
+      "@utils/*": ["./utils/*"],
+      "@types/*": ["./types/*"],
+      "@cache/*": ["./cache/*"],
+      "@clients/*": ["./clients/*"],
+      "@websocket/*": ["./websocket/*"]
+    },
+    "types": ["node", "vitest/globals"],
+    "allowImportingTsExtensions": false,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]
+}
+
+// Made with Bob
