@@ -5,7 +5,7 @@ import { ErrorBoundary } from '../ui/ErrorBoundary';
 
 export function Layout() {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <Header onMenuToggle={() => {}} isMobileMenuOpen={false} />
       
       <main className="overflow-y-auto">

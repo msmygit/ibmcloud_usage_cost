@@ -9,8 +9,8 @@ export function ApiKeyError({ message }: ApiKeyErrorProps) {
   const defaultMessage = 'IBM Cloud API Key is not configured. The application cannot function without proper authentication.';
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="max-w-2xl w-full bg-white rounded-lg shadow-lg border border-red-200 overflow-hidden">
+    <div className="min-h-screen bg-muted flex items-center justify-center p-4">
+      <div className="max-w-2xl w-full bg-background rounded-lg shadow-lg border border-red-200 overflow-hidden">
         {/* Header */}
         <div className="bg-red-50 border-b border-red-200 p-6">
           <div className="flex items-center">
@@ -39,12 +39,12 @@ export function ApiKeyError({ message }: ApiKeyErrorProps) {
 
           {/* Instructions */}
           <div className="space-y-4">
-            <h2 className="text-lg font-semibold text-gray-900 flex items-center">
+            <h2 className="text-lg font-semibold text-foreground flex items-center">
               <Key className="h-5 w-5 mr-2 text-blue-600" />
               How to Fix This
             </h2>
 
-            <ol className="space-y-4 text-sm text-gray-700">
+            <ol className="space-y-4 text-sm text-foreground">
               <li className="flex">
                 <span className="flex-shrink-0 w-6 h-6 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-semibold mr-3">
                   1

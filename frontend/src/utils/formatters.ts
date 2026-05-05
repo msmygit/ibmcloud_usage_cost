@@ -9,10 +9,15 @@ import { format, formatDistanceToNow, parseISO } from 'date-fns';
  * Format currency value
  */
 export function formatCurrency(
-  amount: number,
+  amount: number | null | undefined,
   currency: string = 'USD',
   options?: Intl.NumberFormatOptions
 ): string {
+  // Handle null, undefined, NaN, and Infinity
+  if (amount == null || !isFinite(amount)) {
+    amount = 0;
+  }
+  
   // Ensure currency code is valid (not empty or undefined)
   const validCurrency = currency && currency.trim() !== '' ? currency : 'USD';
   
@@ -28,7 +33,12 @@ export function formatCurrency(
 /**
  * Format large numbers with abbreviations (K, M, B)
  */
-export function formatNumber(value: number, decimals: number = 1): string {
+export function formatNumber(value: number | null | undefined, decimals: number = 1): string {
+  // Handle null, undefined, NaN, and Infinity
+  if (value == null || !isFinite(value)) {
+    return '0';
+  }
+  
   if (value === 0) return '0';
   
   const absValue = Math.abs(value);
@@ -50,7 +60,11 @@ export function formatNumber(value: number, decimals: number = 1): string {
 /**
  * Format percentage
  */
-export function formatPercentage(value: number, decimals: number = 1): string {
+export function formatPercentage(value: number | null | undefined, decimals: number = 1): string {
+  // Handle null, undefined, NaN, and Infinity
+  if (value == null || !isFinite(value)) {
+    return '0.00%';
+  }
   return `${value.toFixed(decimals)}%`;
 }
 
@@ -78,6 +92,46 @@ export function formatMonth(month: string): string {
   if (!year || !monthNum) return month;
   const date = new Date(parseInt(year), parseInt(monthNum) - 1);
   return format(date, 'MMM yyyy');
+}
+
+/**
+ * Format date range for display based on selection type
+ */
+export function formatDateRangeDisplay(
+  dateRange: 'current' | 'last-month' | 'last-3' | 'last-6' | 'last-12' | 'custom',
+  selectedMonth: string
+): string {
+  const [year, monthNum] = selectedMonth.split('-');
+  if (!year || !monthNum) return selectedMonth;
+  
+  const endDate = new Date(parseInt(year), parseInt(monthNum) - 1);
+  const endMonthStr = format(endDate, 'MMM yyyy');
+  
+  switch (dateRange) {
+    case 'current':
+      return endMonthStr;
+    case 'last-month':
+      return endMonthStr;
+    case 'last-3': {
+      const startDate = new Date(endDate);
+      startDate.setMonth(startDate.getMonth() - 2);
+      return `${format(startDate, 'MMM yyyy')} - ${endMonthStr}`;
+    }
+    case 'last-6': {
+      const startDate = new Date(endDate);
+      startDate.setMonth(startDate.getMonth() - 5);
+      return `${format(startDate, 'MMM yyyy')} - ${endMonthStr}`;
+    }
+    case 'last-12': {
+      const startDate = new Date(endDate);
+      startDate.setMonth(startDate.getMonth() - 11);
+      return `${format(startDate, 'MMM yyyy')} - ${endMonthStr}`;
+    }
+    case 'custom':
+      return endMonthStr;
+    default:
+      return endMonthStr;
+  }
 }
 
 /**

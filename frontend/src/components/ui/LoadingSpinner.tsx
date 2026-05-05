@@ -29,7 +29,7 @@ export function LoadingSpinner({
         )}
       />
       {message && (
-        <p className="mt-3 text-sm text-gray-600 animate-pulse">{message}</p>
+        <p className="mt-3 text-sm text-muted-foreground animate-pulse">{message}</p>
       )}
     </div>
   );

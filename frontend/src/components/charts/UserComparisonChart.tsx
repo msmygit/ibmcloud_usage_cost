@@ -70,14 +70,14 @@ export function UserComparisonChart({
     }
   };
 
-  const formatTooltipValue = (value: number) => {
-    return formatCurrency(value, 'USD');
+  const formatTooltipValue = (value: any) => {
+    return formatCurrency(value as number, 'USD');
   };
 
   return (
     <div className={className}>
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+        <h3 className="text-lg font-semibold text-foreground">{title}</h3>
         {showExport && (
           <ExportButton
             onExport={handleExport}
@@ -86,26 +86,26 @@ export function UserComparisonChart({
         )}
       </div>
 
-      <div ref={chartRef} className="bg-white p-4 rounded-lg border border-gray-200">
+      <div ref={chartRef} className="bg-card p-4 rounded-lg border border-border">
         <ResponsiveContainer width="100%" height={height}>
           <BarChart
             data={data}
             layout={horizontal ? 'vertical' : 'horizontal'}
             margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
           >
-            {showGrid && <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />}
+            {showGrid && <CartesianGrid strokeDasharray="3 3" className="stroke-border" />}
             {horizontal ? (
               <>
                 <XAxis
                   type="number"
-                  stroke="#6B7280"
+                  className="fill-muted-foreground"
                   style={{ fontSize: '12px' }}
                   tickFormatter={(value) => `$${value.toLocaleString()}`}
                 />
                 <YAxis
                   type="category"
                   dataKey={xAxisKey}
-                  stroke="#6B7280"
+                  className="fill-muted-foreground"
                   style={{ fontSize: '12px' }}
                   width={150}
                 />
@@ -114,11 +114,11 @@ export function UserComparisonChart({
               <>
                 <XAxis
                   dataKey={xAxisKey}
-                  stroke="#6B7280"
+                  className="fill-muted-foreground"
                   style={{ fontSize: '12px' }}
                 />
                 <YAxis
-                  stroke="#6B7280"
+                  className="fill-muted-foreground"
                   style={{ fontSize: '12px' }}
                   tickFormatter={(value) => `$${value.toLocaleString()}`}
                 />
@@ -127,10 +127,11 @@ export function UserComparisonChart({
             <Tooltip
               formatter={formatTooltipValue}
               contentStyle={{
-                backgroundColor: '#FFFFFF',
-                border: '1px solid #E5E7EB',
+                backgroundColor: 'hsl(var(--card))',
+                border: '1px solid hsl(var(--border))',
                 borderRadius: '6px',
                 boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                color: 'hsl(var(--foreground))',
               }}
             />
             {showLegend && <Legend />}

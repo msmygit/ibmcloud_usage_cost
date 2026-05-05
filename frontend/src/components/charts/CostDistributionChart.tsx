@@ -4,7 +4,6 @@ import {
   Pie,
   Cell,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   BarChart,
   Bar,
@@ -89,7 +88,8 @@ export function CostDistributionChart({
     outerRadius,
     percent,
   }: any) => {
-    if (!showLabels || percent < 0.05) return null; // Don't show labels for < 5%
+    // Handle null/undefined percent values
+    if (!showLabels || percent == null || percent < 0.05) return null; // Don't show labels for < 5%
     
     const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
     const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
@@ -114,13 +114,13 @@ export function CostDistributionChart({
 
     const data = payload[0].payload;
     return (
-      <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
-        <p className="font-semibold text-gray-900">{data.name}</p>
-        <p className="text-sm text-gray-600">
+      <div className="bg-card p-3 border border-border rounded-lg shadow-lg">
+        <p className="font-semibold text-foreground">{data.name || 'Unknown'}</p>
+        <p className="text-sm text-foreground">
           {formatCurrency(data.value, 'USD')}
         </p>
-        {data.percentage !== undefined && (
-          <p className="text-xs text-gray-500">
+        {data.percentage != null && (
+          <p className="text-xs text-muted-foreground">
             {formatPercentage(data.percentage)}
           </p>
         )}
@@ -128,24 +128,56 @@ export function CostDistributionChart({
     );
   };
 
-  const renderLegendFormatter = (value: string) => (
-    <span className="text-sm text-gray-700">{value}</span>
-  );
+  // Custom legend component that respects theme
+  const renderCustomLegend = () => {
+    return (
+      <div className="flex flex-wrap justify-center gap-4 mt-4">
+        {data.map((entry, index) => (
+          <div key={`legend-${index}`} className="flex items-center gap-2">
+            <div
+              className="w-3 h-3 rounded-sm"
+              style={{ backgroundColor: entry.color || COLORS[index % COLORS.length] }}
+            />
+            <span className="text-sm text-foreground">{entry.name}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // Custom tick component for theme-aware axis labels
+  const CustomAxisTick = ({ x, y, payload, angle = 0, textAnchor = 'middle' }: any) => {
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <text
+          x={0}
+          y={0}
+          dy={16}
+          textAnchor={textAnchor}
+          fill="currentColor"
+          className="text-xs fill-muted-foreground"
+          transform={angle ? `rotate(${angle})` : undefined}
+        >
+          {payload.value}
+        </text>
+      </g>
+    );
+  };
 
   return (
     <div className={className}>
       <div className="flex items-center justify-between gap-4 mb-4 flex-wrap">
-        <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+        <h3 className="text-lg font-semibold text-foreground">{title}</h3>
         <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2">
-            <label htmlFor={`${title}-chart-type`} className="text-sm font-medium text-gray-700">
+            <label htmlFor={`${title}-chart-type`} className="text-sm font-medium text-foreground">
               Chart type
             </label>
             <select
               id={`${title}-chart-type`}
               value={chartType}
               onChange={(e) => setChartType(e.target.value as 'pie' | 'bar')}
-              className="px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="px-3 py-2 border border-border rounded-lg bg-background text-foreground text-sm focus:ring-2 focus:ring-primary focus:border-transparent"
             >
               <option value="bar">Bar Chart</option>
               <option value="pie">Pie Chart</option>
@@ -160,7 +192,7 @@ export function CostDistributionChart({
         </div>
       </div>
 
-      <div ref={chartRef} className="bg-white p-4 rounded-lg border border-gray-200">
+      <div ref={chartRef} className="bg-card p-4 rounded-lg border border-border">
         <ResponsiveContainer width="100%" height={height}>
           {chartType === 'pie' ? (
             <PieChart>
@@ -183,29 +215,23 @@ export function CostDistributionChart({
                 ))}
               </Pie>
               <Tooltip content={renderTooltip} />
-              {showLegend && (
-                <Legend
-                  formatter={renderLegendFormatter}
-                  wrapperStyle={{ paddingTop: '16px' }}
-                />
-              )}
             </PieChart>
           ) : (
             <BarChart
               data={data}
               margin={{ top: 8, right: 24, left: 24, bottom: 80 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
               <XAxis
                 dataKey="name"
                 angle={-35}
                 textAnchor="end"
                 interval={0}
                 height={90}
-                tick={{ fontSize: 12, fill: '#4b5563' }}
+                tick={(props) => <CustomAxisTick {...props} angle={-35} textAnchor="end" />}
               />
               <YAxis
-                tick={{ fontSize: 12, fill: '#4b5563' }}
+                tick={(props) => <CustomAxisTick {...props} />}
                 tickFormatter={(value) => formatCurrency(Number(value), 'USD')}
               />
               <Tooltip content={renderTooltip} />
@@ -221,6 +247,7 @@ export function CostDistributionChart({
           )}
         </ResponsiveContainer>
       </div>
+      {showLegend && renderCustomLegend()}
     </div>
   );
 }

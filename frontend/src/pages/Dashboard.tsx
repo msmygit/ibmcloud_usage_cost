@@ -9,15 +9,19 @@ import { DollarSign, Users, Layers, Package, AlertCircle, Calendar } from 'lucid
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { DataTable } from '../components/ui/DataTable';
 import { CostDistributionChart } from '../components/charts/CostDistributionChart';
+import { ExportButton } from '../components/ui/ExportButton';
 import { useAccount } from '../contexts/AccountContext';
-import { formatCurrency, formatNumber } from '../utils/formatters';
+import { useDataExport } from '../hooks/useExport';
+import { formatCurrency, formatNumber, formatDateRangeDisplay } from '../utils/formatters';
 import { format } from 'date-fns';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { AccountSummaryResponse } from '../types/api.types';
 import type { PieChartDataPoint } from '../types/chart.types';
+import type { ExportFormat } from '../types/chart.types';
 
 export function Dashboard() {
   const { selectedAccount } = useAccount();
+  const { exportAsCSV, exportAsExcel } = useDataExport();
   const [dateRange, setDateRange] = useState<'current' | 'last-month' | 'last-3' | 'last-6' | 'last-12' | 'custom'>('current');
   const [customMonth, setCustomMonth] = useState(format(new Date(), 'yyyy-MM'));
   
@@ -45,6 +49,11 @@ export function Dashboard() {
         return format(new Date(), 'yyyy-MM');
     }
   }, [dateRange, customMonth]);
+
+  // Calculate the timeframe display string
+  const timeframeDisplay = useMemo(() => {
+    return formatDateRangeDisplay(dateRange, selectedMonth);
+  }, [dateRange, selectedMonth]);
 
   // Fetch enriched account summary (combines usage costs + resources + creator profiles)
   const { data: accountSummary, isLoading, error } = useQuery<AccountSummaryResponse>({
@@ -324,7 +333,7 @@ export function Dashboard() {
       accessorKey: 'iamId',
       header: 'IAM ID',
       cell: (info) => (
-        <span className="font-mono text-xs text-gray-700">
+        <span className="font-mono text-xs text-foreground">
           {(info.getValue() as string) || '—'}
         </span>
       ),
@@ -343,7 +352,7 @@ export function Dashboard() {
       accessorKey: 'email',
       header: 'Email',
       cell: (info) => (
-        <span className="font-mono text-xs text-gray-700">
+        <span className="font-mono text-xs text-foreground">
           {(info.getValue() as string) || '—'}
         </span>
       ),
@@ -368,8 +377,8 @@ export function Dashboard() {
         const row = info.row.original;
         return (
           <div className="min-w-[260px]">
-            <div className="font-medium text-gray-900">{row.resourceGroupName || row.resourceGroupId}</div>
-            <div className="font-mono text-xs text-gray-500">{row.resourceGroupId}</div>
+            <div className="font-medium text-foreground">{row.resourceGroupName || row.resourceGroupId}</div>
+            <div className="font-mono text-xs text-muted-foreground">{row.resourceGroupId}</div>
           </div>
         );
       },
@@ -378,7 +387,7 @@ export function Dashboard() {
       accessorKey: 'primaryCreatorEmail',
       header: 'Primary Creator',
       cell: (info) => (
-        <span className="text-sm text-gray-700">
+        <span className="text-sm text-foreground">
           {(info.getValue() as string | undefined) || 'N/A'}
         </span>
       ),
@@ -397,9 +406,9 @@ export function Dashboard() {
 
         return (
           <div className="min-w-[280px]">
-            <div className="text-sm text-gray-900">{visibleNames.join(', ')}</div>
+            <div className="text-sm text-foreground">{visibleNames.join(', ')}</div>
             {remainingCount > 0 && (
-              <div className="text-xs text-gray-500">+{remainingCount} more</div>
+              <div className="text-xs text-muted-foreground">+{remainingCount} more</div>
             )}
           </div>
         );
@@ -417,18 +426,66 @@ export function Dashboard() {
     },
   ];
 
+  // Export data transformations
+  const creatorExportData = useMemo(() => {
+    return creatorStats.map((creator) => ({
+      'IAM ID': creator.iamId || '',
+      'First Name': creator.firstName || '',
+      'Last Name': creator.lastName || '',
+      'Email': creator.email || '',
+      'Resource Count': creator.resourceCount,
+      'Creator Cost': creator.creatorCost,
+    }));
+  }, [creatorStats]);
+
+  const resourceGroupExportData = useMemo(() => {
+    return resourceGroupStats.map((rg) => ({
+      'Resource Group Name': rg.resourceGroupName || '',
+      'Resource Group ID': rg.resourceGroupId || '',
+      'Primary Creator': rg.primaryCreatorEmail || 'N/A',
+      'Resource Count': rg.resourceCount,
+      'Resource Names': rg.resourceNames.join('; '),
+      'Resource Group Cost': rg.resourceGroupCost,
+    }));
+  }, [resourceGroupStats]);
+
+  // Export handlers
+  const handleCreatorExport = async (exportFormat: ExportFormat) => {
+    const timestamp = format(new Date(), 'yyyy-MM-dd');
+    const extension = exportFormat === 'csv' ? '.csv' : '.xlsx';
+    const filename = `dashboard-costs-by-creator-${timestamp}${extension}`;
+    
+    if (exportFormat === 'csv') {
+      exportAsCSV(creatorExportData, filename);
+    } else if (exportFormat === 'excel') {
+      exportAsExcel(creatorExportData, filename);
+    }
+  };
+
+  const handleResourceGroupExport = async (exportFormat: ExportFormat) => {
+    const timestamp = format(new Date(), 'yyyy-MM-dd');
+    const extension = exportFormat === 'csv' ? '.csv' : '.xlsx';
+    const filename = `dashboard-costs-by-resource-group-${timestamp}${extension}`;
+    
+    if (exportFormat === 'csv') {
+      exportAsCSV(resourceGroupExportData, filename);
+    } else if (exportFormat === 'excel') {
+      exportAsExcel(resourceGroupExportData, filename);
+    }
+  };
+
   if (!selectedAccount) {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Cost Dashboard</h1>
-          <p className="mt-2 text-sm text-gray-600">Account → Creator → Resource Group</p>
+          <h1 className="text-3xl font-bold text-foreground">Cost Dashboard</h1>
+          <p className="mt-2 text-sm text-muted-foreground">Account → Creator → Resource Group</p>
         </div>
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+        <div className="bg-card rounded-lg shadow-sm border border-border p-8">
           <div className="max-w-md mx-auto text-center">
             <Package className="h-12 w-12 text-blue-600 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">Select an Account</h2>
-            <p className="text-sm text-gray-600">
+            <h2 className="text-xl font-semibold text-foreground mb-2">Select an Account</h2>
+            <p className="text-sm text-muted-foreground">
               Please select an IBM Cloud account from the dropdown in the header to view cost data.
             </p>
           </div>
@@ -441,25 +498,25 @@ export function Dashboard() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Cost Dashboard</h1>
-        <p className="mt-2 text-sm text-gray-600">
+        <h1 className="text-3xl font-bold text-foreground">Cost Dashboard</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           Account cost overview with resource distribution by creator and resource group
         </p>
       </div>
 
       {/* Account Info & Month Selector */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div className="bg-muted border border-border rounded-lg p-4">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <p className="text-sm text-blue-700 font-medium">Current Account</p>
-            <p className="text-sm text-blue-900 font-mono">{selectedAccount.id}</p>
+            <p className="text-sm text-primary font-medium">Current Account</p>
+            <p className="text-sm text-foreground font-mono">{selectedAccount.name} - {selectedAccount.id}</p>
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <Calendar className="h-5 w-5 text-blue-600" />
             <select
               value={dateRange}
               onChange={(e) => setDateRange(e.target.value as any)}
-              className="px-4 py-2 border border-blue-300 rounded-lg bg-white text-blue-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="px-4 py-2 border border-border rounded-lg bg-background text-foreground font-medium focus:ring-2 focus:ring-ring focus:border-transparent"
             >
               <option value="current">Current Month</option>
               <option value="last-month">Last Month</option>
@@ -475,7 +532,7 @@ export function Dashboard() {
                 value={customMonth}
                 onChange={(e) => setCustomMonth(e.target.value)}
                 max={format(new Date(), 'yyyy-MM')}
-                className="px-4 py-2 border border-blue-300 rounded-lg bg-white text-blue-900 font-medium focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="px-4 py-2 border border-border rounded-lg bg-background text-foreground font-medium focus:ring-2 focus:ring-ring focus:border-transparent"
               />
             )}
           </div>
@@ -506,19 +563,19 @@ export function Dashboard() {
       {!isLoading && !error && (
         <>
           {/* 1. ACCOUNT COST */}
-          <div className="bg-white rounded-lg shadow-lg border-2 border-blue-200 p-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4 flex items-center">
+          <div className="bg-card rounded-lg shadow-lg border-2 border-primary/20 p-8">
+            <h2 className="text-2xl font-bold text-foreground mb-4 flex items-center">
               <DollarSign className="h-8 w-8 text-blue-600 mr-3" />
               Total Account Cost
             </h2>
             <div className="text-5xl font-bold text-blue-600 mb-2">
               {formatCurrency(totalCost)}
             </div>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               Billable cost for {selectedMonth}
             </p>
-            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="text-xs text-blue-800">
+            <div className="mt-4 p-3 bg-muted border border-border rounded-lg">
+              <p className="text-xs text-muted-foreground">
                 <strong>Note:</strong> Total cost comes from the IBM Cloud Usage Reports summary. Creator and resource-group
                 costs are derived by allocating that summary cost across the current resource instances from the same
                 4-API dashboard path.
@@ -529,12 +586,12 @@ export function Dashboard() {
           {/* PIE CHARTS - Cost Distribution */}
           <div className="space-y-6">
             {/* Creator Costs Pie Chart */}
-            <div className="bg-white rounded-lg shadow-lg border-l-4 border-blue-500 p-6">
+            <div className="bg-card rounded-lg shadow-lg border-l-4 border-primary p-6">
               {creatorPieData.length > 0 ? (
                 <CostDistributionChart
                   data={creatorPieData}
                   config={{
-                    title: 'Creator Cost Distribution',
+                    title: `Creator Cost Distribution (${timeframeDisplay})`,
                     showLabels: true,
                     showLegend: true,
                     height: 400,
@@ -543,18 +600,18 @@ export function Dashboard() {
                 />
               ) : (
                 <div className="text-center py-8">
-                  <p className="text-gray-600">No creator cost data available</p>
+                  <p className="text-muted-foreground">No creator cost data available</p>
                 </div>
               )}
             </div>
 
             {/* Resource Group Costs Pie Chart */}
-            <div className="bg-white rounded-lg shadow-lg border-l-4 border-green-500 p-6">
+            <div className="bg-card rounded-lg shadow-lg border-l-4 border-green-500 p-6">
               {resourceGroupPieData.length > 0 ? (
                 <CostDistributionChart
                   data={resourceGroupPieData}
                   config={{
-                    title: 'Resource Group Cost Distribution',
+                    title: `Resource Group Cost Distribution (${timeframeDisplay})`,
                     showLabels: true,
                     showLegend: true,
                     height: 400,
@@ -563,18 +620,25 @@ export function Dashboard() {
                 />
               ) : (
                 <div className="text-center py-8">
-                  <p className="text-gray-600">No resource group cost data available</p>
+                  <p className="text-muted-foreground">No resource group cost data available</p>
                 </div>
               )}
             </div>
           </div>
 
-          {/* 2. RESOURCES BY CREATOR */}
-          <div className="bg-white rounded-lg shadow-lg border-2 border-green-200 p-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center">
-              <Users className="h-8 w-8 text-green-600 mr-3" />
-              Resources by Creator
-            </h2>
+          {/* 2. COSTS BY CREATOR */}
+          <div className="bg-card rounded-lg shadow-lg border-2 border-green-500/20 p-8">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-foreground flex items-center">
+                <Users className="h-8 w-8 text-green-600 mr-3" />
+                Costs by Creator ({timeframeDisplay})
+              </h2>
+              <ExportButton
+                onExport={handleCreatorExport}
+                formats={['csv', 'excel']}
+                disabled={creatorStats.length === 0}
+              />
+            </div>
             {creatorStats.length > 0 ? (
               <DataTable
                 data={creatorStats}
@@ -583,16 +647,23 @@ export function Dashboard() {
                 pageSize={10}
               />
             ) : (
-              <p className="text-gray-600 text-center py-8">No creator data available</p>
+              <p className="text-muted-foreground text-center py-8">No creator data available</p>
             )}
           </div>
 
-          {/* 3. RESOURCES BY RESOURCE GROUP */}
-          <div className="bg-white rounded-lg shadow-lg border-2 border-purple-200 p-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center">
-              <Layers className="h-8 w-8 text-purple-600 mr-3" />
-              Resources by Resource Group
-            </h2>
+          {/* 3. COSTS BY RESOURCE GROUP */}
+          <div className="bg-card rounded-lg shadow-lg border-2 border-purple-500/20 p-8">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-foreground flex items-center">
+                <Layers className="h-8 w-8 text-purple-600 mr-3" />
+                Costs by Resource Group ({timeframeDisplay})
+              </h2>
+              <ExportButton
+                onExport={handleResourceGroupExport}
+                formats={['csv', 'excel']}
+                disabled={resourceGroupStats.length === 0}
+              />
+            </div>
             {resourceGroupStats.length > 0 ? (
               <DataTable
                 data={resourceGroupStats}
@@ -601,7 +672,7 @@ export function Dashboard() {
                 pageSize={10}
               />
             ) : (
-              <p className="text-gray-600 text-center py-8">No resource group data available</p>
+              <p className="text-muted-foreground text-center py-8">No resource group data available</p>
             )}
           </div>
         </>

@@ -124,8 +124,10 @@ export interface UsageResourceRecord {
   readonly resource_id?: string;
   readonly resource_instance_id?: string;
   readonly resource_name?: string;
-  readonly billable_charges?: number;
-  readonly non_billable_charges?: number;
+  readonly billable_cost?: number;
+  readonly non_billable_cost?: number;
+  readonly billable_charges?: number; // Legacy field name for backward compatibility
+  readonly non_billable_charges?: number; // Legacy field name for backward compatibility
   readonly currency?: string;
   readonly plan_name?: string;
   readonly pricing_region?: string;

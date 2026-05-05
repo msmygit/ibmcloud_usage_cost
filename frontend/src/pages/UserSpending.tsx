@@ -192,19 +192,19 @@ export function UserSpending() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">User Spending</h1>
-          <p className="mt-2 text-sm text-gray-600">
+          <h1 className="text-3xl font-bold text-foreground">User Spending</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
             Analyze spending by user and team
           </p>
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+        <div className="bg-card rounded-lg shadow-sm border border-border p-8">
           <div className="max-w-md mx-auto text-center">
             <Users className="h-12 w-12 text-blue-600 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+            <h2 className="text-xl font-semibold text-foreground mb-2">
               Select an Account
             </h2>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               Please select an IBM Cloud account from the dropdown in the header to analyze user spending.
             </p>
           </div>
@@ -217,19 +217,19 @@ export function UserSpending() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">User Spending</h1>
-        <p className="mt-2 text-sm text-gray-600">
+        <h1 className="text-3xl font-bold text-foreground">User Spending</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           Analyze spending by user and team
         </p>
       </div>
 
       {/* Account Info */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-blue-700 font-medium">Current Account</p>
-            <p className="text-sm text-blue-900 font-mono">{selectedAccount.id}</p>
-            <p className="text-xs text-blue-600 mt-1">
+            <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">Current Account</p>
+            <p className="text-sm text-blue-900 dark:text-blue-100 font-mono">{selectedAccount.id}</p>
+            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
               {selectedAccount.resourceGroupCount} resource groups
             </p>
           </div>
@@ -237,11 +237,11 @@ export function UserSpending() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-4">
+      <div className="bg-card rounded-lg shadow-sm border border-border p-6 space-y-4">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* User Search */}
           <div>
-            <label htmlFor="userFilter" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="userFilter" className="block text-sm font-medium text-foreground mb-2">
               <Search className="inline h-4 w-4 mr-1" />
               Search Users
             </label>
@@ -251,13 +251,13 @@ export function UserSpending() {
               value={userFilter}
               onChange={(e) => setUserFilter(e.target.value)}
               placeholder="Filter by email..."
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-border rounded-lg bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-transparent"
             />
           </div>
 
           {/* Date Range */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-foreground mb-2">
               Date Range
             </label>
             <DateRangePicker
@@ -278,8 +278,8 @@ export function UserSpending() {
 
       {/* Error State */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <p className="text-red-800">
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
+          <p className="text-red-800 dark:text-red-200">
             {(error as any)?.message || 'Failed to load user spending data.'}
           </p>
         </div>
@@ -351,8 +351,8 @@ export function UserSpending() {
               )}
 
               {/* User Table */}
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">
+              <div className="bg-card rounded-lg shadow-sm border border-border p-6">
+                <h2 className="text-lg font-semibold text-foreground mb-4">
                   User Spending Details
                 </h2>
                 <DataTable
@@ -364,9 +364,9 @@ export function UserSpending() {
               </div>
             </>
           ) : (
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
-              <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">
+            <div className="bg-muted border border-border rounded-lg p-8 text-center">
+              <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">
                 {userFilter
                   ? 'No users found matching your filter.'
                   : 'No user spending data available for the selected period.'}

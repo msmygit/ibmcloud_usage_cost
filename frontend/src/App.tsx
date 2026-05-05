@@ -3,12 +3,14 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Layout } from './components/layout/Layout';
 import { Dashboard } from './pages/Dashboard';
+import { Reports } from './pages/Reports';
 import { ReportGenerator } from './pages/ReportGenerator';
 import { ReportViewer } from './pages/ReportViewer';
 import { UserSpending } from './pages/UserSpending';
 import { ResourceGroupCosts } from './pages/ResourceGroupCosts';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { AccountProvider } from './contexts/AccountContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { websocketService } from './services/websocket.service';
 
 // Create a client with optimized settings
@@ -43,29 +45,31 @@ function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
 function App() {
   return (
-    <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <AccountProvider>
-          <WebSocketProvider>
-            <BrowserRouter>
-              <Routes>
-                <Route path="/" element={<Layout />}>
-                  <Route index element={<Dashboard />} />
-                  <Route path="reports">
-                    <Route index element={<ReportViewer />} />
-                    <Route path="generate" element={<ReportGenerator />} />
-                    <Route path=":reportId" element={<ReportViewer />} />
+    <ThemeProvider>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <AccountProvider>
+            <WebSocketProvider>
+              <BrowserRouter>
+                <Routes>
+                  <Route path="/" element={<Layout />}>
+                    <Route index element={<Dashboard />} />
+                    <Route path="reports">
+                      <Route index element={<Reports />} />
+                      <Route path="generate" element={<ReportGenerator />} />
+                      <Route path=":reportId" element={<ReportViewer />} />
+                    </Route>
+                    <Route path="user-spending" element={<UserSpending />} />
+                    <Route path="resource-groups" element={<ResourceGroupCosts />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
                   </Route>
-                  <Route path="user-spending" element={<UserSpending />} />
-                  <Route path="resource-groups" element={<ResourceGroupCosts />} />
-                  <Route path="*" element={<Navigate to="/" replace />} />
-                </Route>
-              </Routes>
-            </BrowserRouter>
-          </WebSocketProvider>
-        </AccountProvider>
-      </QueryClientProvider>
-    </ErrorBoundary>
+                </Routes>
+              </BrowserRouter>
+            </WebSocketProvider>
+          </AccountProvider>
+        </QueryClientProvider>
+      </ErrorBoundary>
+    </ThemeProvider>
   );
 }
 

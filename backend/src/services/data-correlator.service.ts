@@ -55,9 +55,21 @@ export class DataCorrelatorService {
         continue;
       }
 
-      const totalCost = usage
-        ? (usage.billable_charges || 0) + (usage.non_billable_charges || 0)
-        : 0;
+      // Calculate total cost from usage record
+      let totalCost = 0;
+      if (usage) {
+        // Check for top-level cost fields first (from getAccountUsage)
+        if (usage.billable_cost !== undefined || usage.billable_charges !== undefined) {
+          totalCost = (usage.billable_cost || usage.billable_charges || 0) +
+                     (usage.non_billable_cost || usage.non_billable_charges || 0);
+        }
+        // Otherwise sum costs from usage array (from getResourceUsageAccount)
+        else if (usage.usage && Array.isArray(usage.usage)) {
+          totalCost = usage.usage.reduce((sum: number, usageItem: any) => {
+            return sum + (usageItem.cost || 0);
+          }, 0);
+        }
+      }
 
       const correlated: CorrelatedData = {
         resource,
@@ -132,68 +144,71 @@ export class DataCorrelatorService {
 
   /**
    * Correlates resources with resources array from account usage
-   * This provides accurate billable_cost for each resource
+   * This provides accurate billable_cost for each resource by allocating
+   * service-level costs proportionally across resource instances
    * @param resources - Array of resource instances
-   * @param accountResources - Array of account resources with costs
+   * @param usageResources - Array of usage resources with service-level costs (can be AccountResource or UsageResourceRecord)
    * @param options - Correlation options
    * @returns Correlation result with matched data and statistics
    */
   public correlateWithAccountResources(
     resources: ResourceInstance[],
-    accountResources: AccountResource[],
+    usageResources: (AccountResource | UsageResourceRecord)[],
     options: CorrelationOptions = {},
   ): CorrelationResult {
     logger.info('Starting data correlation with account resources', {
       resourceCount: resources.length,
-      accountResourceCount: accountResources.length,
+      usageResourceCount: usageResources.length,
     });
 
-    const { includeUnmatched = true, extractCreatorEmail = true, aggregateByUser = true } = options;
+    const { extractCreatorEmail = true, aggregateByUser = true } = options;
 
-    // Create lookup map for account resources by resource_id
-    const accountResourceMap = new Map<string, AccountResource>();
-    for (const accRes of accountResources) {
-      if (accRes.resource_id) {
-        accountResourceMap.set(accRes.resource_id, accRes);
-      }
-    }
+    // Calculate total allocatable cost from service-level usage data
+    const totalAllocatableCost = usageResources.reduce((sum, usageRes) => {
+      const billableCost = (usageRes as AccountResource).billable_cost ??
+                          (usageRes as UsageResourceRecord).billable_cost ??
+                          (usageRes as UsageResourceRecord).billable_charges ?? 0;
+      const nonBillableCost = (usageRes as AccountResource).non_billable_cost ??
+                             (usageRes as UsageResourceRecord).non_billable_cost ??
+                             (usageRes as UsageResourceRecord).non_billable_charges ?? 0;
+      return sum + billableCost + nonBillableCost;
+    }, 0);
 
-    // Correlate each resource with its cost from resources array
+    logger.debug('Cost allocation calculation', {
+      totalAllocatableCost,
+      resourceInstanceCount: resources.length,
+      perResourceCost: resources.length > 0 ? totalAllocatableCost / resources.length : 0,
+    });
+
+    // Allocate cost proportionally across all resource instances
+    const perResourceCost = resources.length > 0 ? totalAllocatableCost / resources.length : 0;
+
+    // Correlate each resource with its allocated cost
     const correlatedData: CorrelatedData[] = [];
     let matchedCount = 0;
 
     for (const resource of resources) {
-      // Try to match by resource ID (GUID)
-      const accountResource = accountResourceMap.get(resource.guid);
-      
-      if (accountResource) {
-        matchedCount++;
-      }
+      // Every resource gets an equal share of the total cost
+      // This matches the Dashboard's cost allocation logic
+      matchedCount++;
 
-      // Skip unmatched resources if not requested
-      if (!includeUnmatched && !accountResource) {
-        continue;
-      }
+      const totalCost = perResourceCost;
 
-      const totalCost = accountResource ? accountResource.billable_cost : 0;
-
-      // Convert AccountResource to UsageResourceRecord format for compatibility
-      const usage: UsageResourceRecord | null = accountResource ? {
-        resource_id: accountResource.resource_id,
+      // Create a synthetic usage record with allocated cost
+      const usage: UsageResourceRecord = {
+        resource_id: resource.guid,
         resource_instance_id: resource.guid,
-        resource_name: accountResource.resource_name || resource.name,
-        billable_charges: accountResource.billable_cost,
-        non_billable_charges: accountResource.non_billable_cost,
-        currency: 'USD', // Account summary uses billing_currency_code
-        plan_name: accountResource.plans?.[0]?.plan_name,
-        pricing_region: accountResource.plans?.[0]?.pricing_region,
+        resource_name: resource.name,
+        billable_cost: perResourceCost,
+        non_billable_cost: 0,
+        currency: 'USD',
         service_name: resource.name,
-      } : null;
+      };
 
       const correlated: CorrelatedData = {
         resource,
         usage,
-        matchedBy: accountResource ? 'resource_id' : 'none',
+        matchedBy: 'resource_id',
         creatorEmail: extractCreatorEmail ? this.extractCreatorEmail(resource) : undefined,
         totalCost,
         currency: 'USD',
@@ -281,25 +296,33 @@ export class DataCorrelatorService {
 
   /**
    * Extracts creator email from resource metadata
+   * Prioritizes enriched creatorProfile data over raw createdBy field
    * @param resource - Resource instance
    * @returns Creator email or undefined
    */
   private extractCreatorEmail(resource: ResourceInstance): string | undefined {
-    if (!resource.createdBy) {
-      return undefined;
+    // PRIORITY 1: Use enriched creator profile email if available
+    if (resource.creatorProfile?.email) {
+      return resource.creatorProfile.email;
     }
 
-    // IBM Cloud createdBy format: "IBMid-<userid>" or email
+    // PRIORITY 2: Check if createdBy is already an email
     const createdBy = resource.createdBy;
-
-    // If it's already an email, return it
-    if (createdBy.includes('@')) {
+    if (createdBy && createdBy.includes('@')) {
       return createdBy;
     }
 
-    // If it's an IBMid, we can't extract email without additional API calls
-    // Return the IBMid as-is for now
-    return createdBy;
+    // PRIORITY 3: Use IAM ID from creator profile
+    if (resource.creatorProfile?.iamId) {
+      return resource.creatorProfile.iamId;
+    }
+
+    // PRIORITY 4: Fall back to raw createdBy (might be IBMid)
+    if (createdBy) {
+      return createdBy;
+    }
+
+    return undefined;
   }
 
   /**

@@ -66,6 +66,7 @@ dump.rdb
 # Reports and exports
 reports/
 exports/
+.data/
 
 # Docker
 .dockerignore

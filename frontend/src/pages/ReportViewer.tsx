@@ -84,19 +84,19 @@ export function ReportViewer() {
         <div className="flex items-center">
           <button
             onClick={() => navigate('/reports')}
-            className="mr-4 text-gray-600 hover:text-gray-900"
+            className="mr-4 text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="h-6 w-6" />
           </button>
-          <h1 className="text-3xl font-bold text-gray-900">Report Not Found</h1>
+          <h1 className="text-3xl font-bold text-foreground">Report Not Found</h1>
         </div>
-        <div className="bg-red-50 border border-red-200 rounded-lg p-8 text-center">
-          <p className="text-red-800">
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-8 text-center">
+          <p className="text-red-800 dark:text-red-200">
             {error ? (error as any).message : 'The requested report could not be found.'}
           </p>
           <button
             onClick={() => navigate('/reports/generate')}
-            className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            className="mt-4 px-6 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
           >
             Generate New Report
           </button>
@@ -116,17 +116,17 @@ export function ReportViewer() {
         <div className="flex items-center">
           <button
             onClick={() => navigate('/reports')}
-            className="mr-4 text-gray-600 hover:text-gray-900"
+            className="mr-4 text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="h-6 w-6" />
           </button>
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">
+            <h1 className="text-3xl font-bold text-foreground">
               {isUserSpendingReport && 'User Spending Report'}
               {isTeamSpendingReport && 'Team Spending Report'}
               {!isUserSpendingReport && !isTeamSpendingReport && 'Report'}
             </h1>
-            <p className="mt-1 text-sm text-gray-600">
+            <p className="mt-1 text-sm text-muted-foreground">
               Generated on {formatDate(report.generatedAt)}
             </p>
           </div>
@@ -142,24 +142,24 @@ export function ReportViewer() {
       </div>
 
       {/* Report Metadata */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Report Details</h2>
+      <div className="bg-card rounded-lg shadow-sm border border-border p-6">
+        <h2 className="text-lg font-semibold text-foreground mb-4">Report Details</h2>
         <dl className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
-            <dt className="text-sm text-gray-600">Report ID</dt>
-            <dd className="text-sm font-mono text-gray-900 mt-1">{report.reportId}</dd>
+            <dt className="text-sm text-muted-foreground">Report ID</dt>
+            <dd className="text-sm font-mono text-foreground mt-1">{report.reportId}</dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-600">Account ID</dt>
-            <dd className="text-sm font-mono text-gray-900 mt-1">{report.accountId}</dd>
+            <dt className="text-sm text-muted-foreground">Account ID</dt>
+            <dd className="text-sm font-mono text-foreground mt-1">{report.accountId}</dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-600">Period</dt>
-            <dd className="text-sm text-gray-900 mt-1 capitalize">{report.period}</dd>
+            <dt className="text-sm text-muted-foreground">Period</dt>
+            <dd className="text-sm text-foreground mt-1 capitalize">{report.period}</dd>
           </div>
           <div>
-            <dt className="text-sm text-gray-600">Date Range</dt>
-            <dd className="text-sm text-gray-900 mt-1">
+            <dt className="text-sm text-muted-foreground">Date Range</dt>
+            <dd className="text-sm text-foreground mt-1">
               {formatDate(report.dateRange.startDate)} - {formatDate(report.dateRange.endDate)}
             </dd>
           </div>
@@ -167,8 +167,8 @@ export function ReportViewer() {
 
         {/* Applied Filters */}
         {report.filters && Object.keys(report.filters).length > 0 && (
-          <div className="mt-4 pt-4 border-t">
-            <h3 className="text-sm font-medium text-gray-900 mb-2">Applied Filters</h3>
+          <div className="mt-4 pt-4 border-t border-border">
+            <h3 className="text-sm font-medium text-foreground mb-2">Applied Filters</h3>
             <div className="flex flex-wrap gap-2">
               {report.filters.userEmails && (
                 <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
@@ -238,9 +238,9 @@ function UserSpendingReportView({
         const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ');
         return (
           <div className="min-w-[220px]">
-            <div className="font-medium text-gray-900">{fullName || user.userEmail || user.iamId || 'Unknown'}</div>
-            {user.userEmail && <div className="text-sm text-gray-500">{user.userEmail}</div>}
-            {user.iamId && <div className="text-xs text-gray-400">IAM ID: {user.iamId}</div>}
+            <div className="font-medium text-foreground">{fullName || user.userEmail || user.iamId || 'Unknown'}</div>
+            {user.userEmail && <div className="text-sm text-muted-foreground">{user.userEmail}</div>}
+            {user.iamId && <div className="text-xs text-muted-foreground">IAM ID: {user.iamId}</div>}
           </div>
         );
       },
@@ -259,7 +259,7 @@ function UserSpendingReportView({
       accessorKey: 'userEmail',
       header: 'Email',
       cell: (info) => (
-        <span className="font-mono text-xs text-gray-700">
+        <span className="font-mono text-xs text-foreground">
           {(info.getValue() as string | undefined) || '—'}
         </span>
       ),
@@ -409,8 +409,8 @@ function UserSpendingReportView({
       </div>
 
       {/* Cost by Creator Table */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Cost by Creator</h2>
+      <div className="bg-card rounded-lg shadow-sm border border-border p-6">
+        <h2 className="text-lg font-semibold text-foreground mb-4">Cost by Creator</h2>
         <DataTable
           data={report.topSpenders}
           columns={tableColumns}
@@ -546,8 +546,8 @@ function TeamSpendingReportView({
       </div>
 
       {/* Top Services Table */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Top Services</h2>
+      <div className="bg-card rounded-lg shadow-sm border border-border p-6">
+        <h2 className="text-lg font-semibold text-foreground mb-4">Top Services</h2>
         <DataTable
           data={report.topServices}
           columns={serviceColumns}
@@ -555,8 +555,8 @@ function TeamSpendingReportView({
       </div>
 
       {/* Top Users Table */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Top Users</h2>
+      <div className="bg-background rounded-lg shadow-sm border border-border p-6">
+        <h2 className="text-lg font-semibold text-foreground mb-4">Top Users</h2>
         <DataTable
           data={report.topUsers}
           columns={userColumns}

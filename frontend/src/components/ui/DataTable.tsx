@@ -62,28 +62,28 @@ export function DataTable<TData>({
       {searchable && (
         <div className="flex items-center">
           <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
               type="text"
               value={globalFilter ?? ''}
               onChange={(e) => setGlobalFilter(e.target.value)}
               placeholder={searchPlaceholder}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              className="w-full pl-10 pr-4 py-2 border border-border rounded-md bg-background text-foreground focus:ring-ring focus:border-ring"
             />
           </div>
         </div>
       )}
 
       {/* Table */}
-      <div className="overflow-x-auto border border-gray-200 rounded-lg">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+      <div className="overflow-x-auto border border-border rounded-lg">
+        <table className="min-w-full divide-y divide-border">
+          <thead className="bg-muted">
             {table.getHeaderGroups().map((headerGroup) => (
               <tr key={headerGroup.id}>
                 {headerGroup.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider"
                   >
                     {header.isPlaceholder ? null : (
                       <div
@@ -100,7 +100,7 @@ export function DataTable<TData>({
                           )}
                         </span>
                         {header.column.getCanSort() && (
-                          <span className="text-gray-400">
+                          <span className="text-muted-foreground">
                             {header.column.getIsSorted() === 'asc' ? (
                               <ChevronUp className="h-4 w-4" />
                             ) : header.column.getIsSorted() === 'desc' ? (
@@ -117,12 +117,12 @@ export function DataTable<TData>({
               </tr>
             ))}
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
+          <tbody className="bg-card divide-y divide-border">
             {table.getRowModel().rows.length === 0 ? (
               <tr>
                 <td
                   colSpan={columns.length}
-                  className="px-6 py-8 text-center text-sm text-gray-500"
+                  className="px-6 py-8 text-center text-sm text-muted-foreground"
                 >
                   No data available
                 </td>
@@ -131,12 +131,12 @@ export function DataTable<TData>({
               table.getRowModel().rows.map((row) => (
                 <tr
                   key={row.id}
-                  className="hover:bg-gray-50 transition-colors"
+                  className="hover:bg-muted/50 transition-colors"
                 >
                   {row.getVisibleCells().map((cell) => (
                     <td
                       key={cell.id}
-                      className="px-6 py-4 whitespace-nowrap text-sm text-gray-900"
+                      className="px-6 py-4 whitespace-nowrap text-sm text-foreground"
                     >
                       {flexRender(
                         cell.column.columnDef.cell,
@@ -154,7 +154,7 @@ export function DataTable<TData>({
       {/* Pagination */}
       {table.getPageCount() > 1 && (
         <div className="flex items-center justify-between">
-          <div className="text-sm text-gray-700">
+          <div className="text-sm text-foreground">
             Showing{' '}
             <span className="font-medium">
               {table.getState().pagination.pageIndex * pageSize + 1}
@@ -177,18 +177,18 @@ export function DataTable<TData>({
             <button
               onClick={() => table.setPageIndex(0)}
               disabled={!table.getCanPreviousPage()}
-              className="px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1 border border-border rounded-md text-sm font-medium text-foreground bg-background hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
             >
               First
             </button>
             <button
               onClick={() => table.previousPage()}
               disabled={!table.getCanPreviousPage()}
-              className="px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1 border border-border rounded-md text-sm font-medium text-foreground bg-background hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Previous
             </button>
-            <span className="text-sm text-gray-700">
+            <span className="text-sm text-foreground">
               Page{' '}
               <span className="font-medium">
                 {table.getState().pagination.pageIndex + 1}
@@ -198,14 +198,14 @@ export function DataTable<TData>({
             <button
               onClick={() => table.nextPage()}
               disabled={!table.getCanNextPage()}
-              className="px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1 border border-border rounded-md text-sm font-medium text-foreground bg-background hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Next
             </button>
             <button
               onClick={() => table.setPageIndex(table.getPageCount() - 1)}
               disabled={!table.getCanNextPage()}
-              className="px-3 py-1 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1 border border-border rounded-md text-sm font-medium text-foreground bg-background hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Last
             </button>

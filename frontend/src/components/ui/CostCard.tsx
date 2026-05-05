@@ -45,7 +45,7 @@ export function CostCard({
       case 'down':
         return 'text-green-600 bg-green-50';
       case 'neutral':
-        return 'text-gray-600 bg-gray-50';
+        return 'text-muted-foreground bg-muted';
     }
   };
 
@@ -60,7 +60,7 @@ export function CostCard({
         <div className="flex-1">
           <p className="text-sm font-medium text-gray-600">{title}</p>
           <p className="mt-2 text-3xl font-semibold text-gray-900">
-            {formatCurrency(value, currency)}
+            {currency ? formatCurrency(value, currency) : value.toLocaleString()}
           </p>
           
           {trend && (

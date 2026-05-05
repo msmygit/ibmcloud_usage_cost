@@ -92,7 +92,16 @@ export class UsageReportsClient {
     });
 
     const result = response.result as any;
-    return result.resources || [];
+    const resources = result.resources || [];
+    
+    // Log sample to debug cost field mapping
+    if (resources.length > 0) {
+      logger.info('=== RESOURCE USAGE SAMPLE ===');
+      logger.info(JSON.stringify(resources[0], null, 2));
+      logger.info('=== END SAMPLE ===');
+    }
+    
+    return resources;
   }
 }
 

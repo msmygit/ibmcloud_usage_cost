@@ -165,6 +165,40 @@ export class ReportsController {
   }
 
   /**
+   * Lists all stored reports
+   */
+  public async listReports(
+    req: Request<{}, {}, {}, { accountId?: string }>,
+    res: Response<ApiResponse<{ reports: import('../../repositories/report.repository').ReportSummary[] }>>,
+    next: NextFunction,
+  ): Promise<void> {
+    const requestId = res.locals.requestId as string;
+    const { accountId } = req.query;
+
+    try {
+      logger.info({ requestId, accountId }, 'Listing reports');
+
+      const reports = await reportGeneratorService.listReports(accountId);
+
+      const response: ApiResponse<{ reports: import('../../repositories/report.repository').ReportSummary[]; count: number }> = {
+        success: true,
+        data: {
+          reports,
+          count: reports.length,
+        },
+        metadata: {
+          requestId,
+          timestamp: new Date().toISOString(),
+        },
+      };
+
+      res.status(200).json(response);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * Downloads a report in specified format
    */
   public async downloadReport(

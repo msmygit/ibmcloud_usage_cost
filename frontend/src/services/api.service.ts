@@ -162,6 +162,19 @@ class ApiService {
   }
 
   /**
+   * List all reports
+   */
+  async listReports(accountId?: string): Promise<ApiResponse<{ reports: any[]; count: number }>> {
+    const response = await this.client.get<ApiResponse<{ reports: any[]; count: number }>>(
+      '/api/reports',
+      {
+        params: accountId ? { accountId } : undefined,
+      }
+    );
+    return response.data;
+  }
+
+  /**
    * Cancel report generation
    */
   async cancelReport(reportId: string): Promise<void> {

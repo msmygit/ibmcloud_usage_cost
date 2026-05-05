@@ -11,6 +11,16 @@ import { ReportIdParamSchema } from '../schemas/query.schemas';
 const router = Router();
 
 /**
+ * GET /api/reports
+ * List all stored reports
+ */
+router.get(
+  '/',
+  rateLimitMiddleware({ maxRequests: 100, windowMs: 60000 }), // 100 requests per minute
+  (req, res, next) => reportsController.listReports(req, res, next),
+);
+
+/**
  * POST /api/reports/user-spending
  * Generate a user spending report
  */

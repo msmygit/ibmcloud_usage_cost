@@ -70,7 +70,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
       {/* Mobile Overlay */}
       {isOpen && (
         <div
-          className="fixed inset-0 bg-gray-600 bg-opacity-75 z-40 lg:hidden"
+          className="fixed inset-0 bg-foreground bg-opacity-75 z-40 lg:hidden"
           onClick={onClose}
           aria-hidden="true"
         />
@@ -79,7 +79,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
       {/* Sidebar */}
       <aside
         className={clsx(
-          'fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:z-0',
+          'fixed inset-y-0 left-0 z-50 w-64 bg-background border-r border-border transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:z-0',
           isOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
@@ -99,7 +99,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                     'flex items-center px-4 py-3 text-sm font-medium rounded-lg transition-colors group',
                     active
                       ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
+                      : 'text-foreground hover:bg-muted hover:text-foreground'
                   )}
                   aria-current={active ? 'page' : undefined}
                 >
@@ -108,7 +108,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                       'mr-3 h-5 w-5 flex-shrink-0',
                       active
                         ? 'text-blue-600'
-                        : 'text-gray-400 group-hover:text-gray-600'
+                        : 'text-muted-foreground group-hover:text-foreground'
                     )}
                   />
                   <div className="flex-1">
@@ -116,7 +116,7 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
                     <div
                       className={clsx(
                         'text-xs mt-0.5',
-                        active ? 'text-blue-600' : 'text-gray-500'
+                        active ? 'text-blue-600' : 'text-muted-foreground'
                       )}
                     >
                       {item.description}
@@ -128,8 +128,8 @@ export function Sidebar({ isOpen = true, onClose }: SidebarProps) {
           </nav>
 
           {/* Footer */}
-          <div className="p-4 border-t border-gray-200">
-            <div className="flex items-center text-xs text-gray-500">
+          <div className="p-4 border-t border-border">
+            <div className="flex items-center text-xs text-muted-foreground">
               <TrendingUp className="h-4 w-4 mr-2 text-green-500" />
               <span>System Status: Operational</span>
             </div>

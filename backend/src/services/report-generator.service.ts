@@ -10,6 +10,7 @@ import type {
   DateRange,
 } from '../types/report.types';
 import type { CorrelatedData, UserSpending } from '../types/correlation.types';
+import type { UsageReport } from '../types/usage.types';
 import { ResourceCollectorService } from './resource-collector.service';
 import { UsageCollectorService } from './usage-collector.service';
 import { DataCorrelatorService } from './data-correlator.service';
@@ -18,6 +19,8 @@ import { clientFactory } from '../clients/client-factory';
 import { UserManagementClient } from '../clients/user-management.client';
 import { logger } from '../utils/logger';
 import { AppError } from '../utils/error-handler';
+import { FileReportRepository } from '../repositories/file-report.repository';
+import type { IReportRepository } from '../repositories/report.repository';
 
 /**
  * Service for generating comprehensive spending reports
@@ -28,6 +31,7 @@ export class ReportGeneratorService {
   private dataCorrelator: DataCorrelatorService;
   private cacheManager: CacheManager;
   private userManagementClient: UserManagementClient;
+  private reportRepository: IReportRepository;
 
   constructor(
     resourceCollector?: ResourceCollectorService,
@@ -35,6 +39,7 @@ export class ReportGeneratorService {
     dataCorrelator?: DataCorrelatorService,
     cacheManager?: CacheManager,
     userManagementClient?: UserManagementClient,
+    reportRepository?: IReportRepository,
   ) {
     // Create clients if not provided
     const resourceClient = clientFactory.createResourceControllerClient();
@@ -45,6 +50,7 @@ export class ReportGeneratorService {
     this.dataCorrelator = dataCorrelator || new DataCorrelatorService();
     this.cacheManager = cacheManager || new CacheManager();
     this.userManagementClient = userManagementClient || clientFactory.createUserManagementClient();
+    this.reportRepository = reportRepository || new FileReportRepository();
   }
 
   /**
@@ -65,64 +71,131 @@ export class ReportGeneratorService {
       const dateRange = this.calculateDateRange(options.period, options.dateRange);
       progressCallback?.(10, 'collecting_resources');
 
-      // Collect resources
-      const resources = await this.resourceCollector.collectResources(options.accountId, {
+      // Collect resources and enrich with creator profiles
+      let resources = await this.resourceCollector.collectResources(options.accountId, {
         resourceGroupId: options.filters?.resourceGroups?.[0],
       });
+      
+      // CRITICAL FIX: Enrich resources with creator profiles BEFORE correlation
+      // This ensures creatorEmail is available for proper user aggregation
+      resources = await this.enrichResourcesWithCreatorProfiles(options.accountId, resources);
+      
+      logger.info({
+        resourceCount: resources.length,
+        sampleResource: resources[0] ? {
+          name: resources[0].name,
+          createdBy: resources[0].createdBy,
+          creatorProfile: resources[0].creatorProfile,
+        } : null,
+      }, 'Resources enriched with creator profiles');
+      
       progressCallback?.(30, 'collecting_usage');
 
-      // Collect usage data for the date range
+      // Phase 3: Collect usage data for ALL months in the date range
       const months = this.getMonthsInRange(dateRange);
-      
-      // Get account usage with resources for accurate cost correlation
-      const usageClient = clientFactory.createUsageReportsClient();
-      const latestMonth = months[months.length - 1] || format(new Date(), 'yyyy-MM');
-      const accountUsage = await usageClient.getAccountUsage(options.accountId, latestMonth);
+      const multiMonthUsage = await this.usageCollector.collectUsageRange(options.accountId, {
+        startMonth: months[0] || format(new Date(), 'yyyy-MM'),
+        endMonth: months[months.length - 1] || format(new Date(), 'yyyy-MM'),
+        includeResourceDetails: true,
+      });
       
       progressCallback?.(50, 'correlating_data');
 
-      // Correlate data using resources which has accurate billable_cost
-      const correlationResult = this.dataCorrelator.correlateWithAccountResources(
-        resources,
-        accountUsage.resources || [],
-        {
-          includeUnmatched: false,
-          extractCreatorEmail: true,
-          aggregateByUser: true,
-        }
-      );
+      // Phase 3: Build a Map<month, UsageReport> for correlation
+      const monthlyUsageMap = new Map<string, UsageReport>();
+      for (const monthReport of multiMonthUsage.months) {
+        monthlyUsageMap.set(monthReport.billingMonth, monthReport);
+      }
+
+      // Phase 3: Correlate resources against each month's usage independently
+      // FIXED: Use correlateWithAccountResources() instead of correlateData()
+      // The accountSummary.resources contains service-level costs that need to be
+      // allocated proportionally across resource instances, not matched 1:1
+      const monthlyCorrelatedData = new Map<string, CorrelatedData[]>();
+      for (const [month, usageReport] of monthlyUsageMap.entries()) {
+        logger.debug({
+          month,
+          resourceCount: usageReport.resources?.length || 0,
+          usageReportTotalCost: usageReport.totalCost
+        }, 'Correlating resources for month');
+        
+        // Use the correct correlation method that handles service-level cost allocation
+        const correlationResult = this.dataCorrelator.correlateWithAccountResources(
+          resources,
+          usageReport.resources || [],
+          {
+            includeUnmatched: false,
+            extractCreatorEmail: true,
+            aggregateByUser: false, // Don't aggregate here, we'll do it later
+          }
+        );
+        
+        const monthTotalCost = correlationResult.correlatedData.reduce((sum, d) => sum + d.totalCost, 0);
+        logger.info({
+          month,
+          correlatedCount: correlationResult.correlatedData.length,
+          matchedCount: correlationResult.stats.matchedResources,
+          monthTotalCost,
+          usageResourcesCount: usageReport.resources?.length || 0,
+          resourceInstancesCount: resources.length,
+          sampleCosts: correlationResult.correlatedData.slice(0, 3).map(d => ({
+            resourceName: d.resource.name,
+            resourceGuid: d.resource.guid,
+            createdBy: d.resource.createdBy,
+            creatorEmail: d.creatorEmail,
+            cost: d.totalCost,
+            billableCost: d.usage?.billable_cost,
+            matchedBy: d.matchedBy
+          }))
+        }, 'Month correlation complete with proportional cost allocation');
+        
+        monthlyCorrelatedData.set(month, correlationResult.correlatedData);
+      }
+
       progressCallback?.(70, 'calculating_trends');
 
-      // Apply filters
-      let filteredData = correlationResult.correlatedData;
-      if (options.filters) {
-        filteredData = this.applyFilters(filteredData, options.filters);
+      // Apply filters to each month's data
+      const filteredMonthlyData = new Map<string, CorrelatedData[]>();
+      for (const [month, data] of monthlyCorrelatedData.entries()) {
+        const filtered = options.filters ? this.applyFilters(data, options.filters) : data;
+        filteredMonthlyData.set(month, filtered);
+      }
+
+      // Flatten all filtered data for aggregation
+      const allFilteredData: CorrelatedData[] = [];
+      for (const data of filteredMonthlyData.values()) {
+        allFilteredData.push(...data);
+      }
+
+      // Phase 6: Handle zero-cost scenarios gracefully
+      if (allFilteredData.length === 0) {
+        logger.warn({ reportId: finalReportId, accountId: options.accountId },
+          'No correlated data found - generating zero-cost report');
       }
 
       // Recalculate user spending with filtered data
-      let userSpending = this.aggregateUserSpending(filteredData, months);
+      let userSpending = this.aggregateUserSpending(allFilteredData, months);
       
       // Enrich user spending with user profiles
       userSpending = await this.enrichUserSpending(options.accountId, userSpending);
       progressCallback?.(80, 'generating_forecasts');
 
       // Calculate cost breakdown
-      const costBreakdown = this.calculateCostBreakdown(filteredData);
+      const costBreakdown = this.calculateCostBreakdown(allFilteredData);
 
-      // Calculate monthly trend
-      const monthlyTrend = this.calculateMonthlyTrend(filteredData, months);
+      // Phase 4: Calculate monthly trend using actual monthly data
+      const monthlyTrend = this.calculateMonthlyTrendFromActualData(filteredMonthlyData, months);
 
-      // Generate forecasts if requested
-      let trendAnalysis: TrendAnalysis | undefined;
-      if (options.includeForecasts) {
-        trendAnalysis = this.generateTrendAnalysis(
-          monthlyTrend,
-          options.forecastMonths || 3,
-        );
-      }
+      // Note: Forecast generation is available but not currently included in UserSpendingReport type
+      // If needed in the future, uncomment and add trendAnalysis to the report object
+      // if (options.includeForecasts) {
+      //   const trendAnalysis = this.generateTrendAnalysis(monthlyTrend, options.forecastMonths || 3);
+      // }
+      
       progressCallback?.(90, 'finalizing');
 
       // Calculate top spenders
+      const totalUserCost = userSpending.reduce((sum, u) => sum + u.totalCost, 0);
       const topSpenders = userSpending.slice(0, 10).map((user) => ({
         userEmail: user.userEmail,
         firstName: user.firstName,
@@ -130,7 +203,7 @@ export class ReportGeneratorService {
         iamId: user.iamId,
         totalCost: user.totalCost,
         resourceCount: user.resourceCount,
-        percentage: (user.totalCost / userSpending.reduce((sum, u) => sum + u.totalCost, 0)) * 100,
+        percentage: totalUserCost > 0 ? (user.totalCost / totalUserCost) * 100 : 0,
       }));
 
       // Calculate summary
@@ -138,9 +211,9 @@ export class ReportGeneratorService {
       const summary = {
         totalCost,
         totalUsers: userSpending.length,
-        totalResources: filteredData.length,
+        totalResources: allFilteredData.length,
         averageCostPerUser: userSpending.length > 0 ? totalCost / userSpending.length : 0,
-        currency: filteredData[0]?.currency || 'USD',
+        currency: allFilteredData[0]?.currency || 'USD',
       };
 
       const report: UserSpendingReport = {
@@ -159,12 +232,26 @@ export class ReportGeneratorService {
         monthlyTrend,
       };
 
-      // Cache the report
+      // Phase 2: Save to persistent storage FIRST, then cache
+      try {
+        await this.reportRepository.save(report);
+        logger.info({ reportId: finalReportId }, 'Report saved to persistent storage');
+      } catch (error) {
+        logger.error({ reportId: finalReportId, error }, 'Failed to save report to persistent storage');
+        throw new AppError(
+          'Failed to persist report',
+          'REPORT_PERSISTENCE_FAILED',
+          500,
+          { cause: error },
+        );
+      }
+
+      // Cache the report after successful persistence
       await this.cacheReport(finalReportId, report);
       progressCallback?.(100, 'complete');
 
       const duration = Date.now() - startTime;
-      logger.info({ reportId: finalReportId, duration }, 'User spending report generated successfully');
+      logger.info({ reportId: finalReportId, duration, totalCost }, 'User spending report generated successfully');
 
       return report;
     } catch (error) {
@@ -242,7 +329,21 @@ export class ReportGeneratorService {
         topUsers,
       };
 
-      // Cache the report
+      // Phase 2: Save to persistent storage FIRST, then cache
+      try {
+        await this.reportRepository.save(report);
+        logger.info({ reportId: finalReportId }, 'Report saved to persistent storage');
+      } catch (error) {
+        logger.error({ reportId: finalReportId, error }, 'Failed to save report to persistent storage');
+        throw new AppError(
+          'Failed to persist report',
+          'REPORT_PERSISTENCE_FAILED',
+          500,
+          { cause: error },
+        );
+      }
+
+      // Cache the report after successful persistence
       await this.cacheReport(finalReportId, report);
       progressCallback?.(100, 'complete');
 
@@ -262,11 +363,50 @@ export class ReportGeneratorService {
   }
 
   /**
-   * Retrieves a cached report
+   * Phase 5: Retrieves a report from cache or persistent storage
+   * Tries cache first, then falls back to filesystem, repopulating cache if found
    */
   public async getReport(reportId: string): Promise<UserSpendingReport | TeamSpendingReport | null> {
     const cacheKey = `report:${reportId}`;
-    return await this.cacheManager.get(cacheKey);
+    
+    // Try cache first
+    const cachedReport = await this.cacheManager.get<UserSpendingReport | TeamSpendingReport>(cacheKey);
+    if (cachedReport) {
+      logger.debug({ reportId }, 'Report retrieved from cache');
+      return cachedReport;
+    }
+
+    // Cache miss - try persistent storage
+    logger.debug({ reportId }, 'Cache miss - checking persistent storage');
+    try {
+      const persistedReport = await this.reportRepository.getById(reportId);
+      
+      if (persistedReport) {
+        logger.info({ reportId }, 'Report retrieved from persistent storage - repopulating cache');
+        
+        // Repopulate cache
+        await this.cacheReport(reportId, persistedReport);
+        
+        return persistedReport;
+      }
+    } catch (error) {
+      logger.error({ reportId, error }, 'Failed to retrieve report from persistent storage');
+    }
+
+    logger.debug({ reportId }, 'Report not found in cache or persistent storage');
+    return null;
+  }
+
+  /**
+   * Lists all stored reports with summary information
+   */
+  public async listReports(accountId?: string): Promise<import('../repositories/report.repository').ReportSummary[]> {
+    try {
+      return await this.reportRepository.listAll(accountId);
+    } catch (error) {
+      logger.error({ accountId, error }, 'Failed to list reports');
+      return [];
+    }
   }
 
   /**
@@ -453,7 +593,53 @@ export class ReportGeneratorService {
   }
 
   /**
-   * Calculates monthly trend from correlated data
+   * Phase 4: Calculates monthly trend from actual monthly correlated data
+   * Uses real monthly data instead of naive averaging
+   */
+  private calculateMonthlyTrendFromActualData(
+    monthlyData: Map<string, CorrelatedData[]>,
+    months: string[]
+  ): TrendDataPoint[] {
+    const trendPoints: TrendDataPoint[] = [];
+    let prevCost = 0;
+
+    for (const month of months) {
+      const data = monthlyData.get(month) || [];
+      
+      // Calculate actual cost for this month
+      const cost = data.reduce((sum, d) => sum + d.totalCost, 0);
+      
+      // Count unique resources for this month
+      const resourceSet = new Set<string>();
+      const userSet = new Set<string>();
+      
+      for (const item of data) {
+        resourceSet.add(item.resource.id);
+        if (item.creatorEmail) {
+          userSet.add(item.creatorEmail);
+        }
+      }
+      
+      // Calculate growth rate compared to previous month
+      const growthRate = prevCost > 0 ? ((cost - prevCost) / prevCost) * 100 : 0;
+      
+      trendPoints.push({
+        period: month,
+        cost,
+        resourceCount: resourceSet.size,
+        userCount: userSet.size,
+        growthRate,
+      });
+      
+      prevCost = cost;
+    }
+
+    return trendPoints;
+  }
+
+  /**
+   * Legacy method - kept for backward compatibility
+   * @deprecated Use calculateMonthlyTrendFromActualData instead
    */
   private calculateMonthlyTrend(data: CorrelatedData[], months: string[]): TrendDataPoint[] {
     const monthMap = new Map<string, { cost: number; resources: Set<string>; users: Set<string> }>();
@@ -607,6 +793,66 @@ export class ReportGeneratorService {
       // Log error but don't fail the report generation
       logger.warn({ accountId, error }, 'Failed to enrich user spending with profiles');
       return userSpending;
+    }
+  }
+
+  /**
+   * Enriches resources with creator profile information
+   * This is critical for proper user aggregation in reports
+   */
+  private async enrichResourcesWithCreatorProfiles(
+    accountId: string,
+    resources: any[],
+  ): Promise<any[]> {
+    try {
+      // Extract unique IAM IDs from resource creators
+      const iamIds = Array.from(
+        new Set(
+          resources
+            .map((resource) => resource.createdBy || resource.created_by)
+            .filter((createdBy): createdBy is string => Boolean(createdBy))
+            .map((createdBy) => UserManagementClient.extractIamIdFromEmail(createdBy)),
+        ),
+      );
+
+      if (iamIds.length === 0) {
+        logger.warn({ accountId }, 'No IAM IDs found in resources for profile enrichment');
+        return resources;
+      }
+
+      logger.info({ accountId, iamIdCount: iamIds.length }, 'Fetching user profiles for resources');
+
+      // Fetch user profiles in batch
+      const profiles = await this.userManagementClient.getUserProfiles(accountId, iamIds);
+
+      // Attach profiles to resources
+      return resources.map((resource) => {
+        const createdBy = resource.createdBy || resource.created_by;
+        if (!createdBy) {
+          return resource;
+        }
+
+        const lookupIamId = UserManagementClient.extractIamIdFromEmail(createdBy);
+        const profile = profiles.get(lookupIamId);
+
+        if (!profile) {
+          return resource;
+        }
+
+        return {
+          ...resource,
+          creatorProfile: {
+            iamId: profile.iamId,
+            email: profile.email,
+            firstName: profile.firstName,
+            lastName: profile.lastName,
+          },
+        };
+      });
+    } catch (error) {
+      // Log error but don't fail the report generation
+      logger.warn({ accountId, error }, 'Failed to enrich resources with creator profiles');
+      return resources;
     }
   }
 

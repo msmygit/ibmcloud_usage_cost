@@ -185,7 +185,7 @@ export function ResourceGroupCosts() {
       accessorKey: 'name',
       header: 'Resource Group',
       cell: (info) => (
-        <div className="font-medium text-gray-900">
+        <div className="font-medium text-foreground">
           {info.getValue() as string}
         </div>
       ),
@@ -273,19 +273,19 @@ export function ResourceGroupCosts() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Cost by Resource Group</h1>
-          <p className="mt-2 text-sm text-gray-600">
+          <h1 className="text-3xl font-bold text-foreground">Cost by Resource Group</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
             Visualize spending across different resource groups
           </p>
         </div>
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
+        <div className="bg-card rounded-lg shadow-sm border border-border p-8">
           <div className="max-w-md mx-auto text-center">
             <Layers className="h-12 w-12 text-blue-600 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-900 mb-2">
+            <h2 className="text-xl font-semibold text-foreground mb-2">
               Select an Account
             </h2>
-            <p className="text-sm text-gray-600">
+            <p className="text-sm text-muted-foreground">
               Please select an IBM Cloud account from the dropdown in the header to view resource group costs.
             </p>
           </div>
@@ -299,8 +299,8 @@ export function ResourceGroupCosts() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Cost by Resource Group</h1>
-          <p className="mt-2 text-sm text-gray-600">
+          <h1 className="text-3xl font-bold text-foreground">Cost by Resource Group</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
             Visualize spending across different resource groups
           </p>
         </div>
@@ -311,12 +311,12 @@ export function ResourceGroupCosts() {
       </div>
 
       {/* Account Info */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm text-blue-700 font-medium">Current Account</p>
-            <p className="text-sm text-blue-900 font-mono">{selectedAccount.id}</p>
-            <p className="text-xs text-blue-600 mt-1">
+            <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">Current Account</p>
+            <p className="text-sm text-blue-900 dark:text-blue-100 font-mono">{selectedAccount.id}</p>
+            <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
               {selectedAccount.resourceGroupCount} resource groups
             </p>
           </div>
@@ -324,7 +324,7 @@ export function ResourceGroupCosts() {
       </div>
 
       {/* Date Range Picker */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+      <div className="bg-card rounded-lg shadow-sm border border-border p-6">
         <DateRangePicker
           value={dateRange}
           onChange={setDateRange}
@@ -341,11 +341,11 @@ export function ResourceGroupCosts() {
 
       {/* Error State */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start">
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 flex items-start">
           <AlertCircle className="h-5 w-5 text-red-600 mt-0.5 mr-3 flex-shrink-0" />
           <div>
-            <h3 className="text-sm font-medium text-red-800">Error Loading Data</h3>
-            <p className="text-sm text-red-700 mt-1">
+            <h3 className="text-sm font-medium text-red-800 dark:text-red-200">Error Loading Data</h3>
+            <p className="text-sm text-red-700 dark:text-red-300 mt-1">
               {(error as any)?.message || 'Failed to load resource group cost data. Please try again.'}
             </p>
           </div>
@@ -389,9 +389,9 @@ export function ResourceGroupCosts() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* Trend Chart */}
                 {trendData.length > 0 && (
-                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <div className="bg-card rounded-lg shadow-sm border border-border p-6">
                     <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-lg font-semibold text-gray-900">Cost Trend</h2>
+                      <h2 className="text-lg font-semibold text-foreground">Cost Trend</h2>
                       <ExportButton
                         onExport={handleExportTrendChart}
                         formats={['png', 'jpeg']}
@@ -411,9 +411,9 @@ export function ResourceGroupCosts() {
 
                 {/* Distribution Chart */}
                 {distributionData.length > 0 && (
-                  <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                  <div className="bg-card rounded-lg shadow-sm border border-border p-6">
                     <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-lg font-semibold text-gray-900">Top 5 Resource Groups</h2>
+                      <h2 className="text-lg font-semibold text-foreground">Top 5 Resource Groups</h2>
                       <ExportButton
                         onExport={handleExportDistributionChart}
                         formats={['png', 'jpeg']}
@@ -433,8 +433,8 @@ export function ResourceGroupCosts() {
               </div>
 
               {/* Resource Group Table */}
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">
+              <div className="bg-card rounded-lg shadow-sm border border-border p-6">
+                <h2 className="text-lg font-semibold text-foreground mb-4">
                   Resource Group Details
                 </h2>
                 <DataTable
@@ -446,9 +446,9 @@ export function ResourceGroupCosts() {
               </div>
             </>
           ) : (
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 text-center">
-              <Layers className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">
+            <div className="bg-muted border border-border rounded-lg p-8 text-center">
+              <Layers className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-muted-foreground">
                 No resource group cost data available for the selected period.
               </p>
             </div>

@@ -197,35 +197,35 @@ export function ReportForm({ onSubmit, isLoading = false, error }: ReportFormPro
 
       {/* Report Type */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="mb-2 block text-sm font-medium text-foreground">
           Report Type <span className="text-red-500">*</span>
         </label>
         <div className="grid grid-cols-2 gap-4">
           <button
             type="button"
             onClick={() => setFormData({ ...formData, reportType: 'user-spending' })}
-            className={`p-4 border-2 rounded-lg text-left transition-all ${
+            className={`rounded-lg border-2 p-4 text-left transition-all ${
               formData.reportType === 'user-spending'
-                ? 'border-blue-500 bg-blue-50'
-                : 'border-gray-200 hover:border-gray-300'
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40'
+                : 'border-border bg-card hover:border-muted-foreground/40'
             }`}
             disabled={isLoading}
           >
-            <div className="font-medium text-gray-900">User Spending</div>
-            <div className="text-sm text-gray-500 mt-1">Analyze spending by individual users</div>
+            <div className="font-medium text-foreground">User Spending</div>
+            <div className="mt-1 text-sm text-muted-foreground">Analyze spending by individual users</div>
           </button>
           <button
             type="button"
             onClick={() => setFormData({ ...formData, reportType: 'team-spending' })}
-            className={`p-4 border-2 rounded-lg text-left transition-all ${
+            className={`rounded-lg border-2 p-4 text-left transition-all ${
               formData.reportType === 'team-spending'
-                ? 'border-blue-500 bg-blue-50'
-                : 'border-gray-200 hover:border-gray-300'
+                ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40'
+                : 'border-border bg-card hover:border-muted-foreground/40'
             }`}
             disabled={isLoading}
           >
-            <div className="font-medium text-gray-900">Team Spending</div>
-            <div className="text-sm text-gray-500 mt-1">Analyze team-wide spending patterns</div>
+            <div className="font-medium text-foreground">Team Spending</div>
+            <div className="mt-1 text-sm text-muted-foreground">Analyze team-wide spending patterns</div>
           </button>
         </div>
       </div>
@@ -233,7 +233,7 @@ export function ReportForm({ onSubmit, isLoading = false, error }: ReportFormPro
       {/* Team Name (for team spending) */}
       {formData.reportType === 'team-spending' && (
         <div>
-          <label htmlFor="teamName" className="block text-sm font-medium text-gray-700 mb-2">
+          <label htmlFor="teamName" className="mb-2 block text-sm font-medium text-foreground">
             Team Name <span className="text-red-500">*</span>
           </label>
           <input
@@ -241,8 +241,8 @@ export function ReportForm({ onSubmit, isLoading = false, error }: ReportFormPro
             id="teamName"
             value={formData.teamName || ''}
             onChange={(e) => setFormData({ ...formData, teamName: e.target.value })}
-            className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-              validationErrors.teamName ? 'border-red-500' : 'border-gray-300'
+            className={`w-full rounded-lg border bg-background px-4 py-2 text-foreground focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              validationErrors.teamName ? 'border-red-500' : 'border-border'
             }`}
             placeholder="Enter team name"
             disabled={isLoading}
@@ -255,7 +255,7 @@ export function ReportForm({ onSubmit, isLoading = false, error }: ReportFormPro
 
       {/* Time Period */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="mb-2 block text-sm font-medium text-foreground">
           Time Period <span className="text-red-500">*</span>
         </label>
         <div className="grid grid-cols-4 gap-2">
@@ -264,10 +264,10 @@ export function ReportForm({ onSubmit, isLoading = false, error }: ReportFormPro
               key={preset.value}
               type="button"
               onClick={() => handlePeriodChange(preset.value)}
-              className={`px-4 py-2 border rounded-lg text-sm font-medium transition-all ${
+              className={`rounded-lg border px-4 py-2 text-sm font-medium transition-all ${
                 formData.period === preset.value
-                  ? 'border-blue-500 bg-blue-50 text-blue-700'
-                  : 'border-gray-300 text-gray-700 hover:border-gray-400'
+                  ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
+                  : 'border-border bg-background text-foreground hover:border-muted-foreground/40'
               }`}
               disabled={isLoading}
             >
@@ -280,7 +280,7 @@ export function ReportForm({ onSubmit, isLoading = false, error }: ReportFormPro
       {/* Custom Date Range */}
       {formData.period === 'custom' && (
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label className="mb-2 block text-sm font-medium text-foreground">
             <Calendar className="inline h-4 w-4 mr-1" />
             Custom Date Range
           </label>
@@ -296,24 +296,24 @@ export function ReportForm({ onSubmit, isLoading = false, error }: ReportFormPro
       )}
 
       {/* Forecasting Options */}
-      <div className="border-t pt-6">
+      <div className="border-t border-border pt-6">
         <div className="flex items-center mb-4">
           <input
             type="checkbox"
             id="includeForecasts"
             checked={formData.includeForecasts}
             onChange={(e) => setFormData({ ...formData, includeForecasts: e.target.checked })}
-            className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+            className="h-4 w-4 rounded border-border bg-background text-blue-600 focus:ring-2 focus:ring-blue-500"
             disabled={isLoading}
           />
-          <label htmlFor="includeForecasts" className="ml-2 text-sm font-medium text-gray-700">
+          <label htmlFor="includeForecasts" className="ml-2 text-sm font-medium text-foreground">
             Include cost forecasts
           </label>
         </div>
 
         {formData.includeForecasts && formData.reportType === 'user-spending' && (
           <div className="ml-6">
-            <label htmlFor="forecastMonths" className="block text-sm text-gray-600 mb-2">
+            <label htmlFor="forecastMonths" className="mb-2 block text-sm text-muted-foreground">
               Forecast months ahead
             </label>
             <input
@@ -323,7 +323,7 @@ export function ReportForm({ onSubmit, isLoading = false, error }: ReportFormPro
               max="12"
               value={formData.forecastMonths || 3}
               onChange={(e) => setFormData({ ...formData, forecastMonths: parseInt(e.target.value) })}
-              className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+              className="w-32 rounded-lg border border-border bg-background px-3 py-2 text-foreground focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               disabled={isLoading}
             />
             {validationErrors.forecastMonths && (
@@ -334,7 +334,7 @@ export function ReportForm({ onSubmit, isLoading = false, error }: ReportFormPro
       </div>
 
       {/* Advanced Filters */}
-      <div className="border-t pt-6">
+      <div className="border-t border-border pt-6">
         <button
           type="button"
           onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
@@ -346,11 +346,11 @@ export function ReportForm({ onSubmit, isLoading = false, error }: ReportFormPro
         </button>
 
         {showAdvancedFilters && (
-          <div className="mt-4 space-y-4 p-4 bg-gray-50 rounded-lg">
+          <div className="mt-4 space-y-4 rounded-lg border border-border bg-muted/40 p-4">
             {/* User Email Filter */}
             {formData.reportType === 'user-spending' && (
               <div>
-                <label htmlFor="userEmails" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="userEmails" className="mb-2 block text-sm font-medium text-foreground">
                   Filter by User Emails (comma-separated)
                 </label>
                 <input
@@ -364,7 +364,7 @@ export function ReportForm({ onSubmit, isLoading = false, error }: ReportFormPro
                       filters: { ...formData.filters, userEmails: emails.length > 0 ? emails : undefined },
                     });
                   }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={isLoading}
                 />
               </div>
@@ -372,7 +372,7 @@ export function ReportForm({ onSubmit, isLoading = false, error }: ReportFormPro
 
             {/* Service Filter */}
             <div>
-              <label htmlFor="serviceNames" className="block text-sm font-medium text-gray-700 mb-2">
+              <label htmlFor="serviceNames" className="mb-2 block text-sm font-medium text-foreground">
                 Filter by Services (comma-separated)
               </label>
               <input
@@ -386,7 +386,7 @@ export function ReportForm({ onSubmit, isLoading = false, error }: ReportFormPro
                     filters: { ...formData.filters, serviceNames: services.length > 0 ? services : undefined },
                   });
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 disabled={isLoading}
               />
             </div>
@@ -394,7 +394,7 @@ export function ReportForm({ onSubmit, isLoading = false, error }: ReportFormPro
             {/* Cost Threshold */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label htmlFor="minCost" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="minCost" className="mb-2 block text-sm font-medium text-foreground">
                   Min Cost ($)
                 </label>
                 <input
@@ -410,12 +410,12 @@ export function ReportForm({ onSubmit, isLoading = false, error }: ReportFormPro
                       filters: { ...formData.filters, minCost: value },
                     });
                   }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={isLoading}
                 />
               </div>
               <div>
-                <label htmlFor="maxCost" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="maxCost" className="mb-2 block text-sm font-medium text-foreground">
                   Max Cost ($)
                 </label>
                 <input
@@ -431,7 +431,7 @@ export function ReportForm({ onSubmit, isLoading = false, error }: ReportFormPro
                       filters: { ...formData.filters, maxCost: value },
                     });
                   }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={isLoading}
                 />
               </div>
@@ -441,11 +441,11 @@ export function ReportForm({ onSubmit, isLoading = false, error }: ReportFormPro
       </div>
 
       {/* Submit Button */}
-      <div className="flex justify-end space-x-4 pt-6 border-t">
+      <div className="flex justify-end space-x-4 border-t border-border pt-6">
         <button
           type="button"
           onClick={() => window.history.back()}
-          className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
+          className="px-6 py-2 border border-border rounded-lg text-foreground hover:bg-muted transition-colors"
           disabled={isLoading}
         >
           Cancel

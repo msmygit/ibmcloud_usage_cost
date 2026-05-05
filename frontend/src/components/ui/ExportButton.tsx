@@ -130,8 +130,8 @@ export function ExportIconButton({
       className={clsx(
         'p-2 rounded-md transition-colors',
         disabled || isExporting
-          ? 'text-gray-400 cursor-not-allowed'
-          : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100',
+          ? 'text-muted-foreground cursor-not-allowed'
+          : 'text-muted-foreground hover:text-foreground hover:bg-muted',
         className
       )}
       title={`Export as ${formatLabels[format]}`}

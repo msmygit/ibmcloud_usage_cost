@@ -56,6 +56,24 @@
   body {
     @apply bg-background text-foreground;
   }
+
+  input,
+  select,
+  textarea {
+    @apply border-border bg-background text-foreground;
+    color-scheme: light;
+  }
+
+  .dark input,
+  .dark select,
+  .dark textarea {
+    color-scheme: dark;
+  }
+
+  select option,
+  select optgroup {
+    @apply bg-background text-foreground;
+  }
 }
 /* Print styles */
 @media print {
@@ -92,15 +110,15 @@
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-gray-100;
+  @apply bg-muted;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-gray-400 rounded;
+  @apply rounded bg-muted-foreground/50;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-500;
+  @apply bg-muted-foreground/70;
 }
 
 /* Custom utilities */

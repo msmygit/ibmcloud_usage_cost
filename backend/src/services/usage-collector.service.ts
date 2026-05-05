@@ -25,36 +25,24 @@ export class UsageCollectorService {
     logger.info('Collecting usage for month', { accountId, month });
 
     try {
-      const [accountSummary, resourceUsage] = await Promise.all([
-        withRetry(
-          async () => this.usageClient.getAccountUsage(accountId, month),
-          {
-            attempts: 3,
-            minTimeoutMs: 1000,
-            maxTimeoutMs: 10000,
-            factor: 2,
-          },
-          {
-            operation: 'getAccountUsage',
-            service: 'UsageCollector',
-          },
-        ),
-        withRetry(
-          async () => this.usageClient.getResourceUsage(accountId, month),
-          {
-            attempts: 3,
-            minTimeoutMs: 1000,
-            maxTimeoutMs: 10000,
-            factor: 2,
-          },
-          {
-            operation: 'getResourceUsage',
-            service: 'UsageCollector',
-          },
-        ),
-      ]);
+      // Fetch account usage which contains all resources with costs
+      const accountSummary = await withRetry(
+        async () => this.usageClient.getAccountUsage(accountId, month),
+        {
+          attempts: 3,
+          minTimeoutMs: 1000,
+          maxTimeoutMs: 10000,
+          factor: 2,
+        },
+        {
+          operation: 'getAccountUsage',
+          service: 'UsageCollector',
+        },
+      );
 
-      const totalCost = this.calculateTotalCost(resourceUsage);
+      // Use account summary resources which have complete cost data
+      const resources = accountSummary.resources || [];
+      const totalCost = this.calculateTotalCost(resources);
       const currency = accountSummary.billing_currency_code || 'USD';
 
       const report: UsageReport = {
@@ -62,7 +50,7 @@ export class UsageCollectorService {
         billingMonth: month,
         startDate: `${month}-01`,
         endDate: this.getMonthEndDate(month),
-        resources: resourceUsage,
+        resources,
         totalCost,
         currency,
       };
@@ -70,7 +58,7 @@ export class UsageCollectorService {
       logger.info('Usage collection completed for month', {
         accountId,
         month,
-        resourceCount: resourceUsage.length,
+        resourceCount: resources.length,
         totalCost,
       });
 
@@ -158,8 +146,9 @@ export class UsageCollectorService {
    * @returns Extracted usage metric
    */
   public extractUsageMetric(record: UsageResourceRecord): UsageMetric {
-    const billableCharges = record.billable_charges || 0;
-    const nonBillableCharges = record.non_billable_charges || 0;
+    // Support both field name variants for backward compatibility
+    const billableCharges = record.billable_cost || record.billable_charges || 0;
+    const nonBillableCharges = record.non_billable_cost || record.non_billable_charges || 0;
 
     return {
       resourceId: record.resource_id || 'unknown',
@@ -183,9 +172,22 @@ export class UsageCollectorService {
    */
   private calculateTotalCost(records: UsageResourceRecord[]): number {
     return records.reduce((sum, record) => {
-      const billable = record.billable_charges || 0;
-      const nonBillable = record.non_billable_charges || 0;
-      return sum + billable + nonBillable;
+      // Check for top-level cost fields first (from getAccountUsage)
+      if (record.billable_cost !== undefined || record.billable_charges !== undefined) {
+        const billable = record.billable_cost || record.billable_charges || 0;
+        const nonBillable = record.non_billable_cost || record.non_billable_charges || 0;
+        return sum + billable + nonBillable;
+      }
+      
+      // Otherwise sum costs from usage array (from getResourceUsageAccount)
+      if (record.usage && Array.isArray(record.usage)) {
+        const usageCost = record.usage.reduce((usageSum: number, usageItem: any) => {
+          return usageSum + (usageItem.cost || 0);
+        }, 0);
+        return sum + usageCost;
+      }
+      
+      return sum;
     }, 0);
   }
 
