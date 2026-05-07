@@ -71,6 +71,24 @@ export function createUsageRoutes(controller: UsageController, cacheManager: Cac
     (req, res, next) => accountSummaryController.getAccountSummary(req, res, next)
   );
 
+  /**
+   * GET /api/usage/hierarchical-cost-breakdown
+   * Gets hierarchical cost breakdown: Resource Group → Type → Sub-Type → Resources
+   * Query params:
+   * - accountId (required): IBM Cloud account ID
+   * - month (required): Month in YYYY-MM format
+   */
+  router.get(
+    '/hierarchical-cost-breakdown',
+    validateRequest({
+      query: z.object({
+        accountId: z.string().min(1, 'Account ID is required'),
+        month: z.string().regex(/^\d{4}-\d{2}$/, 'Month must be in YYYY-MM format'),
+      }),
+    }),
+    (req, res, next) => accountSummaryController.getHierarchicalCostBreakdown(req, res, next)
+  );
+
   return router;
 }
 

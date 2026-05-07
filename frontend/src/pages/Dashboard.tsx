@@ -9,13 +9,14 @@ import { DollarSign, Users, Layers, Package, AlertCircle, Calendar } from 'lucid
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { DataTable } from '../components/ui/DataTable';
 import { CostDistributionChart } from '../components/charts/CostDistributionChart';
+import { HierarchicalCostTree } from '../components/tables/HierarchicalCostTree';
 import { ExportButton } from '../components/ui/ExportButton';
 import { useAccount } from '../contexts/AccountContext';
 import { useDataExport } from '../hooks/useExport';
 import { formatCurrency, formatNumber, formatDateRangeDisplay } from '../utils/formatters';
 import { format } from 'date-fns';
 import type { ColumnDef } from '@tanstack/react-table';
-import type { AccountSummaryResponse } from '../types/api.types';
+import type { AccountSummaryResponse, HierarchicalCostBreakdownResponse } from '../types/api.types';
 import type { PieChartDataPoint } from '../types/chart.types';
 import type { ExportFormat } from '../types/chart.types';
 
@@ -79,6 +80,20 @@ export function Dashboard() {
       }
       
       return data;
+    },
+    enabled: !!selectedAccount,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Fetch hierarchical cost breakdown
+  const { data: hierarchicalData, isLoading: isLoadingHierarchical } = useQuery<HierarchicalCostBreakdownResponse>({
+    queryKey: ['hierarchical-cost-breakdown', selectedAccount?.id, selectedMonth],
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/usage/hierarchical-cost-breakdown?accountId=${selectedAccount!.id}&month=${selectedMonth}`
+      );
+      if (!response.ok) throw new Error('Failed to fetch hierarchical cost breakdown');
+      return await response.json();
     },
     enabled: !!selectedAccount,
     staleTime: 5 * 60 * 1000,
@@ -675,6 +690,22 @@ export function Dashboard() {
               <p className="text-muted-foreground text-center py-8">No resource group data available</p>
             )}
           </div>
+
+          {/* 4. HIERARCHICAL COST BREAKDOWN */}
+          {hierarchicalData?.hierarchicalBreakdown && (
+            <div className="bg-card rounded-lg shadow-lg border-2 border-orange-500/20 p-8">
+              {isLoadingHierarchical ? (
+                <div className="flex items-center justify-center py-12">
+                  <LoadingSpinner size="md" message="Loading hierarchical breakdown..." />
+                </div>
+              ) : (
+                <HierarchicalCostTree
+                  data={hierarchicalData.hierarchicalBreakdown}
+                  timeframe={timeframeDisplay}
+                />
+              )}
+            </div>
+          )}
         </>
       )}
     </div>

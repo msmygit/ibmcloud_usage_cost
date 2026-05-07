@@ -2,7 +2,15 @@ import type { Request, Response, NextFunction } from 'express';
 import { clientFactory } from '../../clients/client-factory';
 import { ResourceCollectorService } from '../../services/resource-collector.service';
 import { UserManagementClient } from '../../clients/user-management.client';
-import type { AccountResource, ResourceGroup, ResourceInstance as IBMResourceInstance } from '../../types/ibm-cloud.types';
+import type { AccountResource, ResourceGroup, ResourceInstance as IBMResourceInstance, UsageResourceRecord } from '../../types/ibm-cloud.types';
+import type {
+  HierarchicalCostBreakdown,
+  ResourceGroupAggregation,
+  CreatorAggregation,
+  TypeAggregation,
+  SubTypeAggregation,
+  ResourceCostDetail,
+} from '../../types/resource.types';
 import type { CacheManager } from '../../cache/cache-manager';
 import { CacheTTL } from '../../cache/cache-manager';
 import { CacheKeyGenerator } from '../../cache/cache-keys';
@@ -281,6 +289,345 @@ export class AccountSummaryController {
         resourceCount: entry.resourceCount,
         resourceNames: Array.from(entry.resourceNames).sort(),
       })),
+    };
+  }
+  /**
+   * Extracts service type from resource CRN or type field
+   * @param resource - Resource instance
+   * @returns Service type identifier
+   */
+  private extractServiceTypeFromResource(resource: any): string {
+    // Priority 1: Extract from CRN (format: crn:v1:bluemix:public:SERVICE_TYPE:...)
+    if (resource.crn) {
+      const crnParts = resource.crn.split(':');
+      if (crnParts.length >= 5) {
+        return crnParts[4]; // Service type is the 5th component
+      }
+    }
+
+    // Priority 2: Use resource type field
+    if (resource.type) {
+      return resource.type;
+    }
+
+    // Priority 3: Try to extract from resource ID
+    if (resource.id && resource.id.includes(':')) {
+      const idParts = resource.id.split(':');
+      if (idParts.length >= 5) {
+        return idParts[4];
+      }
+    }
+
+    // Fallback: use 'unknown'
+    return 'unknown';
+  }
+
+
+  /**
+   * GET /api/usage/hierarchical-cost-breakdown
+   * Gets hierarchical cost breakdown: Resource Group → Creator → Type → Sub-Type → Resources
+   * Uses the SAME data source and cost allocation logic as getAccountSummary
+   */
+  public async getHierarchicalCostBreakdown(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { accountId: queryAccountId, month } = req.query;
+
+      const accountId = (queryAccountId as string | undefined) || ibmCloudConfig.accountId;
+
+      if (!accountId) {
+        res.status(400).json({
+          error: 'Bad Request',
+          message: 'accountId query parameter is required',
+        });
+        return;
+      }
+
+      if (!month) {
+        res.status(400).json({
+          error: 'Bad Request',
+          message: 'month query parameter is required (format: YYYY-MM)',
+        });
+        return;
+      }
+
+      logger.info('Getting hierarchical cost breakdown', { accountId, month });
+
+      // 1. Fetch account usage (costs by service type) - SAME AS getAccountSummary
+      const usageCacheKey = CacheKeyGenerator.forUsage(accountId, month as string);
+      const accountSummary = await this.cacheManager.getOrSet(
+        usageCacheKey,
+        async () => {
+          const usageClient = clientFactory.createUsageReportsClient();
+          return await usageClient.getAccountUsage(accountId, month as string);
+        },
+        CacheTTL.USAGE,
+      );
+
+      // 2. Fetch all resources with creator profiles - SAME AS getAccountSummary
+      const resourceClient = clientFactory.createResourceControllerClient();
+      const resourcesCacheKey = CacheKeyGenerator.forResources(accountId);
+      const enrichedResources = await this.cacheManager.getOrSet(
+        resourcesCacheKey,
+        async () => {
+          const collector = new ResourceCollectorService(resourceClient);
+          const resources = await collector.collectResources(accountId);
+          return await this.enrichResourcesWithCreatorProfiles(accountId, resources);
+        },
+        CacheTTL.RESOURCES,
+      );
+
+      // 3. Fetch resource groups for name mapping - SAME AS getAccountSummary
+      const resourceGroupsCacheKey = `${resourcesCacheKey}:groups`;
+      const resourceGroups = await this.cacheManager.getOrSet(
+        resourceGroupsCacheKey,
+        async () => await resourceClient.listResourceGroups(),
+        CacheTTL.RESOURCES,
+      );
+
+      const resourceGroupNameById = new Map<string, string>(
+        resourceGroups.map((group: ResourceGroup) => [group.id, group.name]),
+      );
+
+      // 4. Add resource group names to enriched resources - SAME AS getAccountSummary
+      const resourceInstances = enrichedResources.map((resource) => ({
+        ...resource,
+        resourceGroupName: this.resolveResourceGroupName(resource, resourceGroupNameById),
+      }));
+
+      // 5. Build cost allocation using SAME method as getAccountSummary
+      const costAllocation = this.buildCostAllocation(accountSummary.resources, resourceInstances);
+
+      logger.info('Cost allocation for hierarchical breakdown', {
+        totalAllocatableCost: costAllocation.totalAllocatableCost,
+        resourceGroupCount: costAllocation.resourceGroupCosts.length,
+        resourceInstanceCount: resourceInstances.length,
+      });
+
+      // 6. Build hierarchical breakdown with actual usage costs
+      const hierarchicalBreakdown = this.transformCostAllocationToHierarchy(
+        costAllocation,
+        resourceInstances,
+        accountSummary.currency_code || 'USD',
+        accountSummary.resources, // Pass usage data for actual costs
+      );
+
+      // 7. Return response
+      res.json({
+        accountId,
+        month,
+        hierarchicalBreakdown,
+      });
+    } catch (error) {
+      logger.error('Failed to get hierarchical cost breakdown', { error });
+      next(error);
+    }
+  }
+
+  /**
+   * Transforms cost allocation data into hierarchical structure
+   * Resource Group → Creator → Type → Sub-Type → Resources
+   */
+  private transformCostAllocationToHierarchy(
+    costAllocation: {
+      totalAllocatableCost: number;
+      unallocatedCost: number;
+      creatorCosts: Array<{ creatorKey: string; cost: number; resourceCount: number }>;
+      resourceGroupCosts: Array<{
+        resourceGroupId: string;
+        resourceGroupName: string;
+        cost: number;
+        resourceCount: number;
+        resourceNames: string[];
+      }>;
+    },
+    resourceInstances: Array<IBMResourceInstance & { resource_group_id?: string; resourceGroupName?: string }>,
+    currency: string,
+    usageResources?: Array<any>, // Usage data with actual costs per resource
+  ): HierarchicalCostBreakdown {
+    // Build a map of actual resource costs from usage data
+    // NOTE: usageResources contains service-level costs, NOT per-resource costs
+    // We need to distribute costs across resources within each service type
+    const resourceCostMap = new Map<string, number>();
+    
+    // Build hierarchical structure from resource group costs
+    const resourceGroups: ResourceGroupAggregation[] = costAllocation.resourceGroupCosts.map((rgCost) => {
+      // Filter resources for this resource group
+      const rgResources = resourceInstances.filter((r) => {
+        const resourceGroupId = r.resourceGroupId || r.resource_group_id || 'unknown';
+        return resourceGroupId === rgCost.resourceGroupId;
+      });
+
+      // Calculate per-resource cost for THIS resource group
+      // This is the ONLY way to get individual resource costs since IBM Cloud API
+      // only provides service-level aggregated costs, not per-resource costs
+      const perResourceCost = rgResources.length > 0 ? rgCost.cost / rgResources.length : 0;
+
+      // Group by creator
+      const creatorMap = new Map<string, typeof rgResources>();
+      for (const resource of rgResources) {
+        const creatorKey = String(resource.createdBy || (resource as any).created_by || 'Unknown');
+        const existing = creatorMap.get(creatorKey) || [];
+        creatorMap.set(creatorKey, [...existing, resource]);
+      }
+
+      // Build creator aggregations
+      const creators: CreatorAggregation[] = Array.from(creatorMap.entries()).map(([creatorKey, creatorResources]) => {
+        // Calculate creator cost by summing per-resource costs
+        // Each resource gets an equal share of the resource group's total cost
+        const creatorCost = creatorResources.length * perResourceCost;
+
+        // Determine creator type and display email for IBMid/ServiceId
+        let creatorDisplayEmail: string | undefined;
+        let creatorType: 'user' | 'service' | 'unknown' = 'unknown';
+        
+        if (creatorKey.startsWith('IBMid-')) {
+          creatorType = 'user';
+          // PRIORITY 1: Check creatorProfile.email (enriched from User Management API)
+          const profileResource = creatorResources.find(r => r.creatorProfile?.email);
+          if (profileResource?.creatorProfile?.email) {
+            creatorDisplayEmail = profileResource.creatorProfile.email;
+          } else {
+            // PRIORITY 2: Check if createdBy field contains an email
+            const emailResource = creatorResources.find(r => {
+              const email = r.createdBy || (r as any).created_by;
+              return email && email.includes('@');
+            });
+            creatorDisplayEmail = emailResource?.createdBy || (emailResource as any)?.created_by;
+          }
+        } else if (creatorKey.startsWith('iam-ServiceId-')) {
+          creatorType = 'service';
+          // PRIORITY 1: Check creatorProfile.email (enriched from User Management API)
+          const profileResource = creatorResources.find(r => r.creatorProfile?.email);
+          if (profileResource?.creatorProfile?.email) {
+            creatorDisplayEmail = profileResource.creatorProfile.email;
+          } else {
+            // PRIORITY 2: Check if createdBy field contains an email
+            const emailResource = creatorResources.find(r => {
+              const email = r.createdBy || (r as any).created_by;
+              return email && email.includes('@');
+            });
+            creatorDisplayEmail = emailResource?.createdBy || (emailResource as any)?.created_by || 'unknown';
+          }
+        } else if (creatorKey.includes('@')) {
+          // Already an email
+          creatorType = 'user';
+          creatorDisplayEmail = creatorKey;
+        }
+
+        // Group by type
+        const typeMap = new Map<string, typeof creatorResources>();
+        for (const resource of creatorResources) {
+          const type = this.extractServiceTypeFromResource(resource);
+          const existing = typeMap.get(type) || [];
+          typeMap.set(type, [...existing, resource]);
+        }
+
+        // Build type aggregations
+        const types: TypeAggregation[] = Array.from(typeMap.entries()).map(([type, typeResources]) => {
+          // Calculate type cost by summing per-resource costs
+          const typeCost = typeResources.length * perResourceCost;
+
+          // Group by sub-type (extract region from CRN or use regionId)
+          const subTypeMap = new Map<string, typeof typeResources>();
+          for (const resource of typeResources) {
+            // Extract region from CRN (format: crn:v1:bluemix:public:service:region:...)
+            let region = resource.regionId || 'default';
+            if (!resource.regionId && resource.crn) {
+              const crnParts = resource.crn.split(':');
+              if (crnParts.length >= 6 && crnParts[5]) {
+                region = crnParts[5];
+              }
+            }
+            // If still no region, try to extract from resource name patterns
+            if (region === 'default' && resource.name) {
+              const regionMatch = resource.name.match(/\b(us-south|us-east|eu-gb|eu-de|jp-tok|au-syd|br-sao|ca-tor|jp-osa|eu-es)\b/i);
+              if (regionMatch && regionMatch[1]) {
+                region = regionMatch[1].toLowerCase();
+              }
+            }
+            const existing = subTypeMap.get(region) || [];
+            subTypeMap.set(region, [...existing, resource]);
+          }
+
+          // Build sub-type aggregations
+          const subTypes: SubTypeAggregation[] = Array.from(subTypeMap.entries()).map(([subType, subTypeResources]) => {
+            // Calculate sub-type cost by summing per-resource costs
+            const subTypeCost = subTypeResources.length * perResourceCost;
+
+            // Build resource cost details - each resource gets equal share
+            const resources: ResourceCostDetail[] = subTypeResources.map((resource) => {
+              return {
+                resourceId: resource.id,
+                resourceName: resource.name,
+                resourceType: type,
+                resourceSubType: subType,
+                cost: perResourceCost, // Each resource gets equal share of resource group cost
+                currency,
+                creatorEmail: resource.createdBy || (resource as any).created_by || 'Unknown',
+                resourceGroupId: rgCost.resourceGroupId,
+                resourceGroupName: rgCost.resourceGroupName,
+                region: resource.regionId,
+                createdAt: resource.createdAt,
+              };
+            });
+
+            return {
+              subType,
+              cost: subTypeCost,
+              currency,
+              resourceCount: subTypeResources.length,
+              resources,
+            };
+          });
+
+          // Sort sub-types by cost descending
+          subTypes.sort((a, b) => b.cost - a.cost);
+
+          return {
+            type,
+            cost: typeCost,
+            currency,
+            resourceCount: typeResources.length,
+            subTypes,
+          };
+        });
+
+        // Sort types by cost descending
+        types.sort((a, b) => b.cost - a.cost);
+
+        return {
+          creatorEmail: creatorKey,
+          creatorDisplayEmail, // Email to display as sub-label for IBMid/ServiceId
+          creatorType, // 'user', 'service', or 'unknown'
+          cost: creatorCost,
+          currency,
+          resourceCount: creatorResources.length,
+          types,
+        };
+      });
+
+      // Sort creators by cost descending
+      creators.sort((a, b) => b.cost - a.cost);
+
+      return {
+        resourceGroupId: rgCost.resourceGroupId,
+        resourceGroupName: rgCost.resourceGroupName,
+        cost: rgCost.cost,
+        currency,
+        resourceCount: rgCost.resourceCount,
+        creators,
+      };
+    });
+
+    // Sort resource groups by cost descending
+    resourceGroups.sort((a, b) => b.cost - a.cost);
+
+    return {
+      resourceGroups,
+      totalCost: costAllocation.totalAllocatableCost,
+      currency,
+      totalResourceCount: resourceInstances.length,
+      generatedAt: new Date(),
     };
   }
 }
