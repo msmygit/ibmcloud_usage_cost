@@ -20,6 +20,7 @@ export interface CircuitBreakerConfig {
 export interface IBMCloudConfig {
   readonly apiKey: string;
   readonly accountId?: string;
+  readonly accountName?: string;
   readonly region: string;
   readonly iamUrl?: string;
   readonly resourceControllerUrl: string;

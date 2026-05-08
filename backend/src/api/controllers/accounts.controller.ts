@@ -3,6 +3,8 @@ import { clientFactory } from '../../clients/client-factory';
 import { logger } from '../../utils/logger';
 import { ibmCloudConfig } from '../../config/ibm-cloud.config';
 import type { ResourceGroup } from '../../types/ibm-cloud.types';
+import EnterpriseManagementV1 from '@ibm-cloud/platform-services/enterprise-management/v1.js';
+import { IamAuthenticator } from '@ibm-cloud/platform-services/auth';
 
 export class AccountsController {
   /**
@@ -45,7 +47,7 @@ export class AccountsController {
           return res.json({
             accounts: [{
               id: ibmCloudConfig.accountId,
-              name: `Account ${ibmCloudConfig.accountId.substring(0, 8)}...`,
+              name: ibmCloudConfig.accountName || `Account ${ibmCloudConfig.accountId.substring(0, 8)}...`,
               resourceGroupCount: 0
             }],
             count: 1,
@@ -68,7 +70,7 @@ export class AccountsController {
         if (rg.account_id && !accountMap.has(rg.account_id)) {
           accountMap.set(rg.account_id, {
             id: rg.account_id,
-            name: rg.account_id,
+            name: rg.account_id, // Will be replaced with actual name below
             resourceGroupCount: 0
           });
         }
@@ -79,6 +81,40 @@ export class AccountsController {
           }
         }
       });
+      
+      // Use configured account name if available, otherwise try to fetch from API
+      if (ibmCloudConfig.accountName && ibmCloudConfig.accountId) {
+        const account = accountMap.get(ibmCloudConfig.accountId);
+        if (account) {
+          account.name = ibmCloudConfig.accountName;
+          logger.info(`Using configured account name: ${ibmCloudConfig.accountName}`);
+        }
+      } else {
+        // Fetch account names from Enterprise Management API
+        try {
+          const authenticator = new IamAuthenticator({ apikey: ibmCloudConfig.apiKey });
+          const enterpriseManagementService = new EnterpriseManagementV1({ authenticator });
+          
+          for (const [accountId, accountData] of accountMap.entries()) {
+            try {
+              const response = await enterpriseManagementService.getAccount({ accountId });
+              if (response.result && response.result.name) {
+                accountData.name = response.result.name;
+                logger.info(`Fetched account name: ${response.result.name} for ${accountId}`);
+              }
+            } catch (error) {
+              logger.warn(`Could not fetch account name for ${accountId}, using ID as name`, {
+                error: error instanceof Error ? error.message : String(error)
+              });
+              // Keep the account ID as name if we can't fetch the actual name
+            }
+          }
+        } catch (error) {
+          logger.warn('Could not fetch account names from Enterprise Management API, using account IDs as names', {
+            error: error instanceof Error ? error.message : String(error)
+          });
+        }
+      }
       
       const accounts = Array.from(accountMap.values());
       
@@ -105,7 +141,7 @@ export class AccountsController {
         return res.json({
           accounts: [{
             id: ibmCloudConfig.accountId,
-            name: `Account ${ibmCloudConfig.accountId.substring(0, 8)}...`,
+            name: ibmCloudConfig.accountName || `Account ${ibmCloudConfig.accountId.substring(0, 8)}...`,
             resourceGroupCount: 0
           }],
           count: 1,

@@ -71,7 +71,20 @@ export class ResourceControllerClient {
       while (pager.hasNext()) {
         const nextPage = await pager.getNext();
         if (nextPage && nextPage.length > 0) {
-          allInstances.push(...nextPage);
+          // Map snake_case fields from IBM Cloud API to camelCase for our types
+          const mappedResources = nextPage.map((resource: any) => ({
+            ...resource,
+            createdAt: resource.created_at || resource.createdAt,
+            updatedAt: resource.updated_at || resource.updatedAt,
+            createdBy: resource.created_by || resource.createdBy,
+            regionId: resource.region_id || resource.regionId,
+            resourceGroupId: resource.resource_group_id || resource.resourceGroupId,
+            resourcePlanId: resource.resource_plan_id || resource.resourcePlanId,
+            targetCrn: resource.target_crn || resource.targetCrn,
+            resourceId: resource.resource_id || resource.resourceId,
+          }));
+          
+          allInstances.push(...mappedResources);
           
           if (options.onProgress) {
             options.onProgress(allInstances.length);
@@ -79,17 +92,33 @@ export class ResourceControllerClient {
         }
       }
 
-      // Log first resource for debugging
-      if (allInstances.length > 0) {
-        console.log('=== FIRST RESOURCE INSTANCE SAMPLE ===');
-        console.log(JSON.stringify(allInstances[0], null, 2));
-        console.log('=== END SAMPLE ===');
-      }
-
       logger.info(`Fetched ${allInstances.length} resource instances`);
       return allInstances;
     } catch (error) {
       logger.error('Error fetching resource instances with pager', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get detailed information about a specific resource instance
+   */
+  public async getResourceInstance(resourceId: string): Promise<any> {
+    try {
+      logger.info('Fetching resource instance details', { resourceId });
+      
+      const response = await this.client.getResourceInstance({
+        id: resourceId,
+      });
+      
+      logger.info('Fetched resource instance details', { resourceId });
+      return response.result;
+    } catch (error) {
+      logger.error('Error fetching resource instance details', {
+        resourceId,
         error: error instanceof Error ? error.message : String(error),
         stack: error instanceof Error ? error.stack : undefined,
       });

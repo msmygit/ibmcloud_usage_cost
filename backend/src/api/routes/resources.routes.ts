@@ -13,6 +13,25 @@ export function createResourcesRoutes(controller: ResourcesController): Router {
   const router = Router();
 
   /**
+   * GET /api/resources/by-creator
+   * Lists all active resources grouped by creator
+   * Query params:
+   * - accountId (required): IBM Cloud account ID
+   * - state (optional): Filter by resource state (default: 'active')
+   * Note: This route must come before /:resourceId to avoid conflicts
+   */
+  router.get(
+    '/by-creator',
+    validateRequest({
+      query: z.object({
+        accountId: z.string().optional(),
+        state: z.string().optional(),
+      }),
+    }),
+    (req, res, next) => controller.listResourcesByCreator(req, res, next)
+  );
+
+  /**
    * GET /api/resources
    * Lists all resources for an account
    * Query params:
@@ -25,6 +44,22 @@ export function createResourcesRoutes(controller: ResourcesController): Router {
       query: ResourcesQuerySchema,
     }),
     (req, res, next) => controller.listResources(req, res, next)
+  );
+
+  /**
+   * POST /api/resources/details
+   * Gets detailed information for multiple resources
+   * Body:
+   * - resourceIds: Array of resource IDs
+   */
+  router.post(
+    '/details',
+    validateRequest({
+      body: z.object({
+        resourceIds: z.array(z.string()).min(1, 'At least one resource ID is required'),
+      }),
+    }),
+    (req, res, next) => controller.getResourceDetails(req, res, next)
   );
 
   /**
