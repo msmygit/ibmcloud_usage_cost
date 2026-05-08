@@ -8,6 +8,7 @@ import { ReportGenerator } from './pages/ReportGenerator';
 import { ReportViewer } from './pages/ReportViewer';
 import { UserSpending } from './pages/UserSpending';
 import { ResourceGroupCosts } from './pages/ResourceGroupCosts';
+import { ActiveResources } from './pages/ActiveResources';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { AccountProvider } from './contexts/AccountContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -61,6 +62,7 @@ function App() {
                     </Route>
                     <Route path="user-spending" element={<UserSpending />} />
                     <Route path="resource-groups" element={<ResourceGroupCosts />} />
+                    <Route path="active-resources" element={<ActiveResources />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Route>
                 </Routes>

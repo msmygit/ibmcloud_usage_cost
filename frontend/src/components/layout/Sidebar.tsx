@@ -6,6 +6,7 @@ import {
   PlusCircle,
   Users,
   Layers,
+  Package,
   TrendingUp,
 } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -28,6 +29,12 @@ const navItems: NavItem[] = [
     path: '/',
     icon: LayoutDashboard,
     description: 'Overview and summary',
+  },
+  {
+    name: 'Active Resources',
+    path: '/active-resources',
+    icon: Package,
+    description: 'Resources by creator',
   },
   {
     name: 'Generate Report',

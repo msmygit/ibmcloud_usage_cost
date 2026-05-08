@@ -14,6 +14,7 @@ const envSchema = z.object({
     .min(40, 'IBM_CLOUD_API_KEY must be at least 40 characters long')
     .describe('IBM Cloud API Key is required for authentication'),
   IBM_CLOUD_ACCOUNT_ID: z.string().min(1).optional(),
+  IBM_CLOUD_ACCOUNT_NAME: z.string().min(1).optional(),
   IBM_CLOUD_REGION: z.string().min(1).default('us-south'),
   IBM_CLOUD_IAM_URL: z.string().url().optional(),
   IBM_CLOUD_RESOURCE_CONTROLLER_URL: z
@@ -85,6 +86,7 @@ export const parseEnvironment = (
     ibmCloud: {
       apiKey: env.IBM_CLOUD_API_KEY,
       accountId: env.IBM_CLOUD_ACCOUNT_ID,
+      accountName: env.IBM_CLOUD_ACCOUNT_NAME,
       region: env.IBM_CLOUD_REGION,
       iamUrl: env.IBM_CLOUD_IAM_URL,
       resourceControllerUrl: env.IBM_CLOUD_RESOURCE_CONTROLLER_URL,
