@@ -49,7 +49,7 @@ export function CostDistributionChart({
     showLabels = true,
     showLegend = true,
     innerRadius = 0,
-    outerRadius = 80,
+    outerRadius = 130,
     height = 400,
   } = config;
 

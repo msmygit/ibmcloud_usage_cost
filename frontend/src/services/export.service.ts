@@ -20,8 +20,6 @@ class ExportService {
     options: Partial<ChartExportOptions> = {}
   ): Promise<void> {
     const {
-      width = 1920,
-      height = 1080,
       quality = 1.0,
       backgroundColor = '#ffffff',
       filename = 'chart.png',
@@ -32,11 +30,10 @@ class ExportService {
       const html2canvas = (await import('html2canvas')).default;
       
       const canvas = await html2canvas(chartElement, {
-        width,
-        height,
         backgroundColor,
         scale: 2, // Higher resolution
         logging: false,
+        useCORS: true,
       });
 
       canvas.toBlob(
@@ -62,8 +59,6 @@ class ExportService {
     options: Partial<ChartExportOptions> = {}
   ): Promise<void> {
     const {
-      width = 1920,
-      height = 1080,
       quality = 0.95,
       backgroundColor = '#ffffff',
       filename = 'chart.jpg',
@@ -71,13 +66,12 @@ class ExportService {
 
     try {
       const html2canvas = (await import('html2canvas')).default;
-      
+
       const canvas = await html2canvas(chartElement, {
-        width,
-        height,
         backgroundColor,
         scale: 2,
         logging: false,
+        useCORS: true,
       });
 
       canvas.toBlob(
