@@ -115,6 +115,10 @@ export interface HierarchicalCostBreakdown {
   readonly currency: string;
   readonly totalResourceCount: number;
   readonly generatedAt: Date;
+  /** Authoritative IBM Cloud total from getAccountUsage — always matches the IBM console */
+  readonly authoritativeTotal?: number;
+  /** Costs not attributable to specific resource instances (subscription/platform-level) */
+  readonly unattributedCost?: number;
 }
 
 // Made with Bob

@@ -46,6 +46,10 @@ export class CacheKeyGenerator {
    * @param endMonth - End month in YYYY-MM format
    * @returns Cache key
    */
+  public static forInstanceUsage(accountId: string, month: string): string {
+    return `${CachePrefix.USAGE}:${accountId}:${month}:instances`;
+  }
+
   public static forUsageRange(accountId: string, startMonth: string, endMonth: string): string {
     return `${CachePrefix.USAGE}:${accountId}:${startMonth}:${endMonth}`;
   }

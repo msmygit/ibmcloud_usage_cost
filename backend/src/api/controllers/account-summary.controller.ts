@@ -2,7 +2,8 @@ import type { Request, Response, NextFunction } from 'express';
 import { clientFactory } from '../../clients/client-factory';
 import { ResourceCollectorService } from '../../services/resource-collector.service';
 import { UserManagementClient } from '../../clients/user-management.client';
-import type { AccountResource, ResourceGroup, ResourceInstance as IBMResourceInstance, UsageResourceRecord } from '../../types/ibm-cloud.types';
+import UsageReportsV4 from '@ibm-cloud/platform-services/usage-reports/v4.js';
+import type { AccountResource, ResourceGroup, ResourceInstance as IBMResourceInstance } from '../../types/ibm-cloud.types';
 import type {
   HierarchicalCostBreakdown,
   ResourceGroupAggregation,
@@ -114,9 +115,30 @@ export class AccountSummaryController {
         });
       }
 
-      const costAllocation = this.buildCostAllocation(accountSummary.resources, resourceInstances);
+      // 3. Fetch per-instance usage to build accurate cost map
+      const instanceUsageCacheKey = CacheKeyGenerator.forInstanceUsage(accountId, month as string);
+      const instanceUsageRecords = await this.cacheManager.getOrSet(
+        instanceUsageCacheKey,
+        async () => {
+          const usageClient = clientFactory.createUsageReportsClient();
+          return await usageClient.getResourceUsage(accountId, month as string);
+        },
+        CacheTTL.USAGE,
+      );
 
-      // 3. Return combined response
+      const { instanceCostMap, unattributedCost } = this.buildInstanceCostMap(
+        accountSummary.resources,
+        instanceUsageRecords,
+      );
+
+      const costAllocation = this.buildCostAllocation(
+        accountSummary.resources,
+        resourceInstances,
+        instanceCostMap,
+        unattributedCost,
+      );
+
+      // 4. Return combined response
       res.json({
         accountId,
         month,
@@ -206,9 +228,73 @@ export class AccountSummaryController {
     return resourceGroupNameById.get(resourceGroupId) || resourceGroupId;
   }
 
+  /**
+   * Builds a per-instance cost map using proportional scaling.
+   * Uses getAccountUsage() totals as the authoritative cost per service type,
+   * then distributes each service's total proportionally across its instances
+   * based on their relative metric costs from getResourceUsageAccount().
+   * This ensures the sum of instance costs always matches the IBM Cloud billing total.
+   */
+  private buildInstanceCostMap(
+    accountResources: AccountResource[],
+    instanceUsageRecords: UsageReportsV4.InstanceUsage[],
+  ): { instanceCostMap: Map<string, number>; unattributedCost: number } {
+    // Authoritative service-level totals: resource_id → billable_cost
+    const serviceTotalMap = new Map<string, number>();
+    for (const svc of accountResources) {
+      serviceTotalMap.set(svc.resource_id, (svc.billable_cost || 0));
+    }
+
+    // Group instance records by service type (resource_id)
+    const instancesByService = new Map<string, UsageReportsV4.InstanceUsage[]>();
+    for (const inst of instanceUsageRecords) {
+      if (!inst.resource_id) continue;
+      const existing = instancesByService.get(inst.resource_id) ?? [];
+      instancesByService.set(inst.resource_id, [...existing, inst]);
+    }
+
+    // Raw cost = sum of non-chargeable-filtered metric costs (used as proportional weight only)
+    const getRawCost = (inst: UsageReportsV4.InstanceUsage): number =>
+      inst.usage.filter(m => !m.non_chargeable).reduce((s, m) => s + (m.cost ?? 0), 0);
+
+    // Scale each instance so its service group sums to the authoritative service total
+    const instanceCostMap = new Map<string, number>();
+    for (const [resourceId, instances] of instancesByService) {
+      const serviceTotal = serviceTotalMap.get(resourceId) ?? 0;
+      const rawTotal = instances.reduce((s, inst) => s + getRawCost(inst), 0);
+
+      for (const inst of instances) {
+        const rawCost = getRawCost(inst);
+        const scaledCost = rawTotal > 0
+          ? (rawCost / rawTotal) * serviceTotal   // proportional share
+          : serviceTotal / instances.length;       // equal fallback when all raw costs are 0
+        instanceCostMap.set(inst.resource_instance_id, scaledCost);
+      }
+    }
+
+    // Sum costs for services that have NO matching instances (subscription/platform costs)
+    let unattributedCost = 0;
+    for (const [resourceId, serviceTotal] of serviceTotalMap) {
+      if (!instancesByService.has(resourceId) && serviceTotal > 0) {
+        unattributedCost += serviceTotal;
+      }
+    }
+
+    logger.info('Instance cost map built', {
+      serviceCount: serviceTotalMap.size,
+      instanceRecordCount: instanceUsageRecords.length,
+      mappedInstanceCount: instanceCostMap.size,
+      unattributedCost,
+    });
+
+    return { instanceCostMap, unattributedCost };
+  }
+
   private buildCostAllocation(
     usageResources: AccountResource[],
     resourceInstances: Array<IBMResourceInstance & { resource_group_id?: string; resourceGroupName?: string }>,
+    instanceCostMap: Map<string, number>,
+    unattributedCost: number,
   ): {
     totalAllocatableCost: number;
     unallocatedCost: number;
@@ -230,9 +316,7 @@ export class AccountSummaryController {
       0,
     );
 
-    const totalResourceInstances = resourceInstances.length;
-
-    if (totalResourceInstances === 0 || totalAllocatableCost === 0) {
+    if (resourceInstances.length === 0 || totalAllocatableCost === 0) {
       return {
         totalAllocatableCost,
         unallocatedCost: totalAllocatableCost,
@@ -241,7 +325,6 @@ export class AccountSummaryController {
       };
     }
 
-    const perResourceCost = totalAllocatableCost / totalResourceInstances;
     const creatorMap = new Map<string, { cost: number; resourceCount: number }>();
     const resourceGroupMap = new Map<
       string,
@@ -249,13 +332,18 @@ export class AccountSummaryController {
     >();
 
     for (const resource of resourceInstances) {
+      // Use actual proportionally-scaled cost from the instance cost map
+      const resourceCost = instanceCostMap.get(resource.id)
+        ?? instanceCostMap.get(resource.crn)
+        ?? 0;
+
       const creatorKey = String(resource.createdBy || (resource as any).created_by || 'Unknown');
       const resourceGroupId = resource.resourceGroupId || resource.resource_group_id || 'unknown';
       const resourceGroupName = resource.resourceGroupName || resourceGroupId;
       const resourceName = resource.name || resource.guid || resource.id;
 
       const creatorEntry = creatorMap.get(creatorKey) || { cost: 0, resourceCount: 0 };
-      creatorEntry.cost += perResourceCost;
+      creatorEntry.cost += resourceCost;
       creatorEntry.resourceCount += 1;
       creatorMap.set(creatorKey, creatorEntry);
 
@@ -266,17 +354,15 @@ export class AccountSummaryController {
         resourceCount: 0,
         resourceNames: new Set<string>(),
       };
-      resourceGroupEntry.cost += perResourceCost;
+      resourceGroupEntry.cost += resourceCost;
       resourceGroupEntry.resourceCount += 1;
       resourceGroupEntry.resourceNames.add(resourceName);
       resourceGroupMap.set(resourceGroupId, resourceGroupEntry);
     }
 
-    const allocatedCost = perResourceCost * totalResourceInstances;
-
     return {
       totalAllocatableCost,
-      unallocatedCost: Math.max(totalAllocatableCost - allocatedCost, 0),
+      unallocatedCost: unattributedCost,
       creatorCosts: Array.from(creatorMap.entries()).map(([creatorKey, value]) => ({
         creatorKey,
         cost: value.cost,
@@ -394,28 +480,41 @@ export class AccountSummaryController {
         resourceGroupName: this.resolveResourceGroupName(resource, resourceGroupNameById),
       }));
 
-      // 5. Build cost allocation using SAME method as getAccountSummary
-      const costAllocation = this.buildCostAllocation(accountSummary.resources, resourceInstances);
-
-      logger.info('Cost allocation for hierarchical breakdown', {
-        totalAllocatableCost: costAllocation.totalAllocatableCost,
-        resourceGroupCount: costAllocation.resourceGroupCosts.length,
-        resourceInstanceCount: resourceInstances.length,
-      });
-
-      // 6. Build hierarchical breakdown with actual usage costs
-      const hierarchicalBreakdown = this.transformCostAllocationToHierarchy(
-        costAllocation,
-        resourceInstances,
-        accountSummary.currency_code || 'USD',
-        accountSummary.resources, // Pass usage data for actual costs
+      // 5. Fetch per-instance usage and build proportionally-scaled cost map
+      const instanceUsageCacheKey = CacheKeyGenerator.forInstanceUsage(accountId, month as string);
+      const instanceUsageRecords = await this.cacheManager.getOrSet(
+        instanceUsageCacheKey,
+        async () => {
+          const usageClient = clientFactory.createUsageReportsClient();
+          return await usageClient.getResourceUsage(accountId, month as string);
+        },
+        CacheTTL.USAGE,
       );
+
+      const { instanceCostMap, unattributedCost } = this.buildInstanceCostMap(
+        accountSummary.resources,
+        instanceUsageRecords,
+      );
+
+      // 6. Build hierarchical breakdown using proportionally-scaled per-instance costs
+      const hierarchicalBreakdown = this.transformCostAllocationToHierarchy(
+        resourceInstances,
+        resourceGroupNameById,
+        instanceCostMap,
+        accountSummary.currency_code || 'USD',
+      );
+
+      const authoritativeTotal = accountSummary.resources.reduce((s, r) => s + (r.billable_cost || 0), 0);
 
       // 7. Return response
       res.json({
         accountId,
         month,
-        hierarchicalBreakdown,
+        hierarchicalBreakdown: {
+          ...hierarchicalBreakdown,
+          authoritativeTotal,
+          unattributedCost,
+        },
       });
     } catch (error) {
       logger.error('Failed to get hierarchical cost breakdown', { error });
@@ -424,70 +523,46 @@ export class AccountSummaryController {
   }
 
   /**
-   * Transforms cost allocation data into hierarchical structure
-   * Resource Group → Creator → Type → Sub-Type → Resources
+   * Builds hierarchical cost breakdown using actual per-instance costs from IBM Cloud Usage Reports API.
+   * Hierarchy: Resource Group → Creator → Type → Sub-Type → Individual Resources
+   * Costs are looked up from instanceCostMap and aggregated bottom-up (resource → sub-type → type → creator → RG).
    */
   private transformCostAllocationToHierarchy(
-    costAllocation: {
-      totalAllocatableCost: number;
-      unallocatedCost: number;
-      creatorCosts: Array<{ creatorKey: string; cost: number; resourceCount: number }>;
-      resourceGroupCosts: Array<{
-        resourceGroupId: string;
-        resourceGroupName: string;
-        cost: number;
-        resourceCount: number;
-        resourceNames: string[];
-      }>;
-    },
     resourceInstances: Array<IBMResourceInstance & { resource_group_id?: string; resourceGroupName?: string }>,
+    resourceGroupNameById: Map<string, string>,
+    instanceCostMap: Map<string, number>,
     currency: string,
-    usageResources?: Array<any>, // Usage data with actual costs per resource
   ): HierarchicalCostBreakdown {
-    // Build a map of actual resource costs from usage data
-    // NOTE: usageResources contains service-level costs, NOT per-resource costs
-    // We need to distribute costs across resources within each service type
-    const resourceCostMap = new Map<string, number>();
-    
-    // Build hierarchical structure from resource group costs
-    const resourceGroups: ResourceGroupAggregation[] = costAllocation.resourceGroupCosts.map((rgCost) => {
-      // Filter resources for this resource group
-      const rgResources = resourceInstances.filter((r) => {
-        const resourceGroupId = r.resourceGroupId || r.resource_group_id || 'unknown';
-        return resourceGroupId === rgCost.resourceGroupId;
-      });
+    // Group resources by resource group
+    const rgMap = new Map<string, { rgName: string; resources: typeof resourceInstances }>();
+    for (const resource of resourceInstances) {
+      const rgId = resource.resourceGroupId || (resource as any).resource_group_id || 'unknown';
+      const rgName = resource.resourceGroupName || resourceGroupNameById.get(rgId) || rgId;
+      const existing = rgMap.get(rgId) ?? { rgName, resources: [] as typeof resourceInstances };
+      existing.resources.push(resource);
+      rgMap.set(rgId, existing);
+    }
 
-      // Calculate per-resource cost for THIS resource group
-      // This is the ONLY way to get individual resource costs since IBM Cloud API
-      // only provides service-level aggregated costs, not per-resource costs
-      const perResourceCost = rgResources.length > 0 ? rgCost.cost / rgResources.length : 0;
-
-      // Group by creator
+    const resourceGroups: ResourceGroupAggregation[] = Array.from(rgMap.entries()).map(([rgId, { rgName, resources: rgResources }]) => {
+      // Group by creator within this resource group
       const creatorMap = new Map<string, typeof rgResources>();
       for (const resource of rgResources) {
         const creatorKey = String(resource.createdBy || (resource as any).created_by || 'Unknown');
-        const existing = creatorMap.get(creatorKey) || [];
+        const existing = creatorMap.get(creatorKey) ?? [];
         creatorMap.set(creatorKey, [...existing, resource]);
       }
 
-      // Build creator aggregations
       const creators: CreatorAggregation[] = Array.from(creatorMap.entries()).map(([creatorKey, creatorResources]) => {
-        // Calculate creator cost by summing per-resource costs
-        // Each resource gets an equal share of the resource group's total cost
-        const creatorCost = creatorResources.length * perResourceCost;
-
-        // Determine creator type and display email for IBMid/ServiceId
+        // Resolve creator display email and type
         let creatorDisplayEmail: string | undefined;
         let creatorType: 'user' | 'service' | 'unknown' = 'unknown';
-        
+
         if (creatorKey.startsWith('IBMid-')) {
           creatorType = 'user';
-          // PRIORITY 1: Check creatorProfile.email (enriched from User Management API)
           const profileResource = creatorResources.find(r => r.creatorProfile?.email);
           if (profileResource?.creatorProfile?.email) {
             creatorDisplayEmail = profileResource.creatorProfile.email;
           } else {
-            // PRIORITY 2: Check if createdBy field contains an email
             const emailResource = creatorResources.find(r => {
               const email = r.createdBy || (r as any).created_by;
               return email && email.includes('@');
@@ -496,12 +571,10 @@ export class AccountSummaryController {
           }
         } else if (creatorKey.startsWith('iam-ServiceId-')) {
           creatorType = 'service';
-          // PRIORITY 1: Check creatorProfile.email (enriched from User Management API)
           const profileResource = creatorResources.find(r => r.creatorProfile?.email);
           if (profileResource?.creatorProfile?.email) {
             creatorDisplayEmail = profileResource.creatorProfile.email;
           } else {
-            // PRIORITY 2: Check if createdBy field contains an email
             const emailResource = creatorResources.find(r => {
               const email = r.createdBy || (r as any).created_by;
               return email && email.includes('@');
@@ -509,28 +582,22 @@ export class AccountSummaryController {
             creatorDisplayEmail = emailResource?.createdBy || (emailResource as any)?.created_by || 'unknown';
           }
         } else if (creatorKey.includes('@')) {
-          // Already an email
           creatorType = 'user';
           creatorDisplayEmail = creatorKey;
         }
 
-        // Group by type
+        // Group by service type
         const typeMap = new Map<string, typeof creatorResources>();
         for (const resource of creatorResources) {
           const type = this.extractServiceTypeFromResource(resource);
-          const existing = typeMap.get(type) || [];
+          const existing = typeMap.get(type) ?? [];
           typeMap.set(type, [...existing, resource]);
         }
 
-        // Build type aggregations
         const types: TypeAggregation[] = Array.from(typeMap.entries()).map(([type, typeResources]) => {
-          // Calculate type cost by summing per-resource costs
-          const typeCost = typeResources.length * perResourceCost;
-
-          // Group by sub-type (extract region from CRN or use regionId)
+          // Group by region/sub-type
           const subTypeMap = new Map<string, typeof typeResources>();
           for (const resource of typeResources) {
-            // Extract region from CRN (format: crn:v1:bluemix:public:service:region:...)
             let region = resource.regionId || 'default';
             if (!resource.regionId && resource.crn) {
               const crnParts = resource.crn.split(':');
@@ -538,38 +605,37 @@ export class AccountSummaryController {
                 region = crnParts[5];
               }
             }
-            // If still no region, try to extract from resource name patterns
             if (region === 'default' && resource.name) {
               const regionMatch = resource.name.match(/\b(us-south|us-east|eu-gb|eu-de|jp-tok|au-syd|br-sao|ca-tor|jp-osa|eu-es)\b/i);
-              if (regionMatch && regionMatch[1]) {
+              if (regionMatch?.[1]) {
                 region = regionMatch[1].toLowerCase();
               }
             }
-            const existing = subTypeMap.get(region) || [];
+            const existing = subTypeMap.get(region) ?? [];
             subTypeMap.set(region, [...existing, resource]);
           }
 
-          // Build sub-type aggregations
           const subTypes: SubTypeAggregation[] = Array.from(subTypeMap.entries()).map(([subType, subTypeResources]) => {
-            // Calculate sub-type cost by summing per-resource costs
-            const subTypeCost = subTypeResources.length * perResourceCost;
-
-            // Build resource cost details - each resource gets equal share
+            // Look up actual cost per resource from instanceCostMap using CRN (primary key)
             const resources: ResourceCostDetail[] = subTypeResources.map((resource) => {
+              const actualCost = instanceCostMap.get(resource.id) ?? instanceCostMap.get(resource.crn) ?? 0;
               return {
                 resourceId: resource.id,
                 resourceName: resource.name,
                 resourceType: type,
                 resourceSubType: subType,
-                cost: perResourceCost, // Each resource gets equal share of resource group cost
+                cost: actualCost,
                 currency,
                 creatorEmail: resource.createdBy || (resource as any).created_by || 'Unknown',
-                resourceGroupId: rgCost.resourceGroupId,
-                resourceGroupName: rgCost.resourceGroupName,
+                resourceGroupId: rgId,
+                resourceGroupName: rgName,
                 region: resource.regionId,
                 createdAt: resource.createdAt,
               };
             });
+
+            // Sub-type cost is the sum of its resources' actual costs
+            const subTypeCost = resources.reduce((sum, r) => sum + r.cost, 0);
 
             return {
               subType,
@@ -580,8 +646,10 @@ export class AccountSummaryController {
             };
           });
 
-          // Sort sub-types by cost descending
           subTypes.sort((a, b) => b.cost - a.cost);
+
+          // Type cost is the sum of its sub-types' costs
+          const typeCost = subTypes.reduce((sum, st) => sum + st.cost, 0);
 
           return {
             type,
@@ -592,13 +660,15 @@ export class AccountSummaryController {
           };
         });
 
-        // Sort types by cost descending
         types.sort((a, b) => b.cost - a.cost);
+
+        // Creator cost is the sum of its types' costs
+        const creatorCost = types.reduce((sum, t) => sum + t.cost, 0);
 
         return {
           creatorEmail: creatorKey,
-          creatorDisplayEmail, // Email to display as sub-label for IBMid/ServiceId
-          creatorType, // 'user', 'service', or 'unknown'
+          creatorDisplayEmail,
+          creatorType,
           cost: creatorCost,
           currency,
           resourceCount: creatorResources.length,
@@ -606,25 +676,29 @@ export class AccountSummaryController {
         };
       });
 
-      // Sort creators by cost descending
       creators.sort((a, b) => b.cost - a.cost);
 
+      // Resource group cost is the sum of its creators' costs
+      const rgTotalCost = creators.reduce((sum, c) => sum + c.cost, 0);
+
       return {
-        resourceGroupId: rgCost.resourceGroupId,
-        resourceGroupName: rgCost.resourceGroupName,
-        cost: rgCost.cost,
+        resourceGroupId: rgId,
+        resourceGroupName: rgName,
+        cost: rgTotalCost,
         currency,
-        resourceCount: rgCost.resourceCount,
+        resourceCount: rgResources.length,
         creators,
       };
     });
 
-    // Sort resource groups by cost descending
     resourceGroups.sort((a, b) => b.cost - a.cost);
+
+    // Total cost is the sum of all resource group costs (derived from actual per-instance data)
+    const totalCost = resourceGroups.reduce((sum, rg) => sum + rg.cost, 0);
 
     return {
       resourceGroups,
-      totalCost: costAllocation.totalAllocatableCost,
+      totalCost,
       currency,
       totalResourceCount: resourceInstances.length,
       generatedAt: new Date(),

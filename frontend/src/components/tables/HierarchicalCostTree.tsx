@@ -103,6 +103,9 @@ export function HierarchicalCostTree({ data, timeframe }: HierarchicalCostTreePr
     return filteredResourceGroups.reduce((sum, rg) => sum + rg.resourceCount, 0);
   }, [filteredResourceGroups]);
 
+  const displayTotal = data.authoritativeTotal ?? data.totalCost;
+  const unattributedCost = data.unattributedCost ?? 0;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-4">
@@ -110,10 +113,17 @@ export function HierarchicalCostTree({ data, timeframe }: HierarchicalCostTreePr
           <Layers className="h-6 w-6 text-purple-600 mr-2" />
           Hierarchical Cost Breakdown ({timeframe})
         </h3>
-        <div className="text-sm text-muted-foreground">
-          Total: <span className="font-bold text-foreground">{formatCurrency(data.totalCost)}</span>
-          {' • '}
-          {formatNumber(data.totalResourceCount, 0)} resources
+        <div className="text-sm text-muted-foreground text-right">
+          <div>
+            Total: <span className="font-bold text-foreground">{formatCurrency(displayTotal)}</span>
+            {' • '}
+            {formatNumber(data.totalResourceCount, 0)} resources
+          </div>
+          {unattributedCost > 0 && (
+            <div className="text-xs text-amber-600 mt-0.5">
+              Includes {formatCurrency(unattributedCost)} in platform/subscription costs
+            </div>
+          )}
         </div>
       </div>
 

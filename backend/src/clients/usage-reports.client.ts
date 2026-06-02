@@ -1,7 +1,6 @@
 import UsageReportsV4 from '@ibm-cloud/platform-services/usage-reports/v4.js';
 
-import type { ResourceUsageList, UsageAccountSummary } from '../types/ibm-cloud.types';
-import type { UsageQueryOptions } from '../types/resource.types';
+import type { UsageAccountSummary } from '../types/ibm-cloud.types';
 import { logger } from '../utils/logger';
 
 export class UsageReportsClient {
@@ -73,35 +72,27 @@ export class UsageReportsClient {
   }
 
   /**
-   * Gets resource usage with automatic pagination.
-   * Note: IBM Cloud Usage Reports API doesn't accept offset parameter in the SDK.
-   * We fetch all records in a single request with the maximum allowed limit.
+   * Gets per-resource-instance usage costs using cursor-based pagination via GetResourceUsageAccountPager.
+   * Returns all instances for the billing month — essential for accurate individual resource cost lookup.
    */
-  public async getResourceUsage(
-    accountId: string,
-    month: string,
-    options: UsageQueryOptions = {},
-  ): Promise<ResourceUsageList['resources']> {
-    const limit = options.limit ?? 200; // IBM Cloud max limit is 200
+  public async getResourceUsage(accountId: string, month: string): Promise<UsageReportsV4.InstanceUsage[]> {
+    logger.info('Fetching per-instance usage records', { accountId, month });
 
-    const response = await this.client.getResourceUsageAccount({
+    const pager = new UsageReportsV4.GetResourceUsageAccountPager(this.client, {
       accountId,
       billingmonth: month,
       names: true,
-      limit,
+      limit: 100,
     });
 
-    const result = response.result as any;
-    const resources = result.resources || [];
-    
-    // Log sample to debug cost field mapping
-    if (resources.length > 0) {
-      logger.info('=== RESOURCE USAGE SAMPLE ===');
-      logger.info(JSON.stringify(resources[0], null, 2));
-      logger.info('=== END SAMPLE ===');
+    const allInstances: UsageReportsV4.InstanceUsage[] = [];
+    while (pager.hasNext()) {
+      const page = await pager.getNext();
+      allInstances.push(...page);
     }
-    
-    return resources;
+
+    logger.info('Per-instance usage records fetched', { accountId, month, count: allInstances.length });
+    return allInstances;
   }
 }
 
