@@ -72,6 +72,25 @@ export class UsageReportsClient {
   }
 
   /**
+   * Gets service-level usage costs for a specific resource group.
+   * Returns the same per-RG breakdown that the IBM Cloud console displays.
+   * Use this to get authoritative per-RG totals that match the IBM billing UI exactly.
+   */
+  public async getResourceGroupUsage(
+    accountId: string,
+    resourceGroupId: string,
+    month: string,
+  ): Promise<UsageReportsV4.ResourceGroupUsage> {
+    const response = await this.client.getResourceGroupUsage({
+      accountId,
+      resourceGroupId,
+      billingmonth: month,
+      names: true,
+    });
+    return response.result;
+  }
+
+  /**
    * Gets per-resource-instance usage costs using cursor-based pagination via GetResourceUsageAccountPager.
    * Returns all instances for the billing month — essential for accurate individual resource cost lookup.
    */

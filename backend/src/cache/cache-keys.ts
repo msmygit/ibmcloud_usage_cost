@@ -50,6 +50,10 @@ export class CacheKeyGenerator {
     return `${CachePrefix.USAGE}:${accountId}:${month}:instances`;
   }
 
+  public static forResourceGroupUsage(accountId: string, rgId: string, month: string): string {
+    return `${CachePrefix.USAGE}:${accountId}:${month}:rg:${rgId}`;
+  }
+
   public static forUsageRange(accountId: string, startMonth: string, endMonth: string): string {
     return `${CachePrefix.USAGE}:${accountId}:${startMonth}:${endMonth}`;
   }
